@@ -82,17 +82,27 @@ interface Config {
   is_active: boolean;
 }
 
+interface SourceCreate {
+  name: string;
+  url: string;
+  priority: number;
+}
+
 export const XpertPanel: FC = () => {
   const [sources, setSources] = useState<Source[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [configs, setConfigs] = useState<Config[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
-  const { isOpen, onOpen, onClose } = useDisclosure();
-  const [newSource, setNewSource] = useState({ name: "", url: "", priority: 1 });
+  const [newSource, setNewSource] = useState<SourceCreate>({
+    name: "",
+    url: "",
+    priority: 1,
+  });
   const toast = useToast();
+  const { isOpen, onOpen, onClose } = useDisclosure();
 
-  const fetchData = async () => {
+  const loadData = async () => {
     setLoading(true);
     try {
       const [sourcesRes, statsRes, configsRes] = await Promise.all([
@@ -110,10 +120,13 @@ export const XpertPanel: FC = () => {
       setStats(statsRes);
       setConfigs(configsRes);
     } catch (error) {
+      console.error("Failed to load Xpert data:", error);
       toast({
         title: "Error loading data",
+        description: "Failed to load Xpert Panel data",
         status: "error",
-        duration: 3000,
+        duration: 5000,
+        isClosable: true,
       });
     } finally {
       setLoading(false);
@@ -121,7 +134,7 @@ export const XpertPanel: FC = () => {
   };
 
   useEffect(() => {
-    fetchData();
+    loadData();
   }, []);
 
   const handleAddSource = async () => {
@@ -150,7 +163,7 @@ export const XpertPanel: FC = () => {
       });
       setNewSource({ name: "", url: "", priority: 1 });
       onClose();
-      fetchData();
+      loadData();
     } catch (error) {
       toast({
         title: "Error adding source",
@@ -171,7 +184,7 @@ export const XpertPanel: FC = () => {
         status: "success",
         duration: 3000,
       });
-      fetchData();
+      loadData();
     } catch (error) {
       toast({
         title: "Error deleting source",
@@ -187,7 +200,7 @@ export const XpertPanel: FC = () => {
         method: "POST",
         headers: { Authorization: `Bearer ${getAuthToken()}` },
       });
-      fetchData();
+      loadData();
     } catch (error) {
       toast({
         title: "Error toggling source",
@@ -211,7 +224,7 @@ export const XpertPanel: FC = () => {
         status: "success",
         duration: 5000,
       });
-      fetchData();
+      loadData();
     } catch (error) {
       toast({
         title: "Error syncing to Marzban",
@@ -236,7 +249,7 @@ export const XpertPanel: FC = () => {
         status: "success",
         duration: 5000,
       });
-      fetchData();
+      loadData();
     } catch (error) {
       toast({
         title: "Error updating",
