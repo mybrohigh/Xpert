@@ -120,9 +120,19 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
       }}
       position="relative"
     >
-      <Text as="h1" fontWeight="semibold" fontSize="2xl">
-        {t("users")}
-      </Text>
+      <HStack>
+        <Link to="/">
+          <Text as="h1" fontWeight="semibold" fontSize="2xl" cursor="pointer" _hover={{ color: "primary.500" }}>
+            {t("users")}
+          </Text>
+        </Link>
+        <Text fontSize="2xl" color="gray.400">|</Text>
+        <Link to="/xpert/">
+          <Text as="h1" fontWeight="semibold" fontSize="2xl" cursor="pointer" _hover={{ color: "primary.500" }}>
+            Xpert Panel
+          </Text>
+        </Link>
+      </HStack>
       {showDonationNotif && (
         <NotificationCircle top="0" right="0" zIndex={9999} />
       )}
