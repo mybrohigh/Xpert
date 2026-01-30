@@ -146,3 +146,13 @@ JOB_RECORD_NODE_USAGES_INTERVAL = config("JOB_RECORD_NODE_USAGES_INTERVAL", cast
 JOB_RECORD_USER_USAGES_INTERVAL = config("JOB_RECORD_USER_USAGES_INTERVAL", cast=int, default=10)
 JOB_REVIEW_USERS_INTERVAL = config("JOB_REVIEW_USERS_INTERVAL", cast=int, default=10)
 JOB_SEND_NOTIFICATIONS_INTERVAL = config("JOB_SEND_NOTIFICATIONS_INTERVAL", cast=int, default=30)
+
+# ============================================
+# XPERT PANEL - Subscription Aggregation
+# ============================================
+XPERT_DOMAIN = config("XPERT_DOMAIN", default="home.turkmendili.ru")
+XPERT_TARGET_CHECK_IPS = config("XPERT_TARGET_CHECK_IPS", default="93.171.220.198,185.69.186.175").split(",")
+XPERT_MAX_PING_MS = config("XPERT_MAX_PING_MS", cast=int, default=300)
+XPERT_UPDATE_INTERVAL_HOURS = config("XPERT_UPDATE_INTERVAL_HOURS", cast=int, default=1)
+XPERT_REDIS_URL = config("XPERT_REDIS_URL", default="")
+JOB_SUBSCRIPTION_AGGREGATION_INTERVAL = config("JOB_SUBSCRIPTION_AGGREGATION_INTERVAL", cast=int, default=3600)

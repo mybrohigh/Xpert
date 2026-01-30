@@ -85,11 +85,18 @@ Use the following command:
 Then, navigate to {click.style(f'http://127.0.0.1:{UVICORN_PORT}', bold=True)} on your computer.
             """)
 
-            bind_args['host'] = '127.0.0.1'
+            # For Koyeb/Docker deployment - bind to 0.0.0.0 without SSL
+            # SSL is handled by the reverse proxy (Koyeb, Nginx, etc.)
+            bind_args['host'] = UVICORN_HOST
             bind_args['port'] = UVICORN_PORT
 
     if DEBUG:
         bind_args['uds'] = None
+        bind_args['host'] = '0.0.0.0'
+    
+    # Force 0.0.0.0 for container deployments (Koyeb, Docker)
+    import os
+    if os.getenv("KOYEB_DEPLOYMENT", "") or os.getenv("DOCKER_DEPLOYMENT", ""):
         bind_args['host'] = '0.0.0.0'
 
     try:
