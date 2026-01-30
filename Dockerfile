@@ -6,7 +6,7 @@ WORKDIR /app/dashboard
 COPY app/dashboard/package*.json ./
 RUN npm ci --legacy-peer-deps
 COPY app/dashboard/ ./
-RUN npm run build
+RUN npm run build -- --outDir build --assetsDir statics
 
 # Stage 2: Build Python dependencies
 FROM python:$PYTHON_VERSION-slim AS python-build
@@ -43,7 +43,7 @@ COPY --from=python-build /usr/local/share/xray /usr/local/share/xray
 COPY --from=python-build /usr/local/bin/xray /usr/local/bin/xray
 
 COPY . /code
-COPY --from=frontend-build /app/dashboard/dist /code/app/dashboard/build
+COPY --from=frontend-build /app/dashboard/build /code/app/dashboard/build
 
 RUN ln -s /code/marzban-cli.py /usr/bin/marzban-cli \
     && chmod +x /usr/bin/marzban-cli \
