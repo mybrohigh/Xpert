@@ -39,13 +39,15 @@ def run_build():
     if not build_dir.is_dir():
         build()
 
-    print(f"Mounting dashboard at {DASHBOARD_PATH} from {build_dir}")
+    # Force mount to root for Koyeb compatibility
+    mount_path = "/"
+    print(f"Mounting dashboard at {mount_path} from {build_dir}")
     print(f"Statics directory: {statics_dir}")
     print(f"Build dir exists: {build_dir.is_dir()}")
     print(f"Statics dir exists: {statics_dir.is_dir()}")
     
     app.mount(
-        DASHBOARD_PATH,
+        mount_path,
         StaticFiles(directory=build_dir, html=True),
         name="dashboard"
     )
