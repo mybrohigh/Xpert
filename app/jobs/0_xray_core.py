@@ -9,6 +9,9 @@ from xray_api import exc as xray_exc
 
 
 def core_health_check():
+    if not xray.XRAY_ENABLED:
+        return
+    
     config = None
 
     # main core
@@ -36,6 +39,10 @@ def core_health_check():
 
 @app.on_event("startup")
 def start_core():
+    if not xray.XRAY_ENABLED:
+        logger.warning("Xray not available - skipping core startup (subscription aggregation mode)")
+        return
+    
     logger.info("Generating Xray core config")
 
     start_time = time.time()
@@ -67,6 +74,9 @@ def start_core():
 
 @app.on_event("shutdown")
 def app_shutdown():
+    if not xray.XRAY_ENABLED:
+        return
+    
     logger.info("Stopping main Xray core")
     xray.core.stop()
 

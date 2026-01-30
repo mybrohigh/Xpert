@@ -1,3 +1,5 @@
+import os
+import logging
 from random import randint
 from typing import TYPE_CHECKING, Dict, Sequence
 
@@ -9,22 +11,33 @@ from app.xray.config import XRayConfig
 from app.xray.core import XRayCore
 from app.xray.node import XRayNode
 from config import XRAY_ASSETS_PATH, XRAY_EXECUTABLE_PATH, XRAY_JSON
-from xray_api import XRay as XRayAPI
 from xray_api import exceptions, types
 from xray_api import exceptions as exc
 
-core = XRayCore(XRAY_EXECUTABLE_PATH, XRAY_ASSETS_PATH)
+logger = logging.getLogger(__name__)
 
-# Search for a free API port
-try:
-    for api_port in range(randint(10000, 60000), 65536):
-        if not check_port(api_port):
-            break
-finally:
-    config = XRayConfig(XRAY_JSON, api_port=api_port)
-    del api_port
+# Check if Xray is available (optional for subscription aggregation mode)
+XRAY_ENABLED = os.path.exists(XRAY_EXECUTABLE_PATH)
 
-api = XRayAPI(config.api_host, config.api_port)
+if XRAY_ENABLED:
+    from xray_api import XRay as XRayAPI
+    core = XRayCore(XRAY_EXECUTABLE_PATH, XRAY_ASSETS_PATH)
+    
+    # Search for a free API port
+    try:
+        for api_port in range(randint(10000, 60000), 65536):
+            if not check_port(api_port):
+                break
+    finally:
+        config = XRayConfig(XRAY_JSON, api_port=api_port)
+        del api_port
+    
+    api = XRayAPI(config.api_host, config.api_port)
+else:
+    logger.warning("Xray not found - running in subscription aggregation mode only")
+    core = None
+    config = None
+    api = None
 
 nodes: Dict[int, XRayNode] = {}
 
