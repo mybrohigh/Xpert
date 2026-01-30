@@ -47,7 +47,23 @@ STATUS_TEXTS = {
 def generate_v2ray_links(proxies: dict, inbounds: dict, extra_data: dict, reverse: bool) -> list:
     format_variables = setup_format_variables(extra_data)
     conf = V2rayShareLink()
-    return process_inbounds_and_tags(inbounds, proxies, format_variables, conf=conf, reverse=reverse)
+    
+    # Добавляем обычные конфиги Marzban
+    marzban_links = process_inbounds_and_tags(inbounds, proxies, format_variables, conf=conf, reverse=reverse)
+    
+    # Добавляем конфиги из Xpert Panel
+    try:
+        from app.xpert.service import xpert_service
+        xpert_configs = xpert_service.get_active_configs()
+        
+        for config in xpert_configs:
+            conf.add_link(config.raw)
+            
+    except Exception as e:
+        # Если Xpert Panel не настроен, просто игнорируем
+        pass
+    
+    return conf.render(reverse=reverse)
 
 
 def generate_clash_subscription(
@@ -59,9 +75,16 @@ def generate_clash_subscription(
         conf = ClashConfiguration()
 
     format_variables = setup_format_variables(extra_data)
-    return process_inbounds_and_tags(
+    
+    # Добавляем обычные конфиги Marzban
+    marzban_config = process_inbounds_and_tags(
         inbounds, proxies, format_variables, conf=conf, reverse=reverse
     )
+    
+    # Добавляем конфиги из Xpert Panel (только для v2ray формата, clash требует специальной конвертации)
+    # Пока пропускаем для clash, так как нужна конвертация в yaml формат
+    
+    return marzban_config
 
 
 def generate_singbox_subscription(
