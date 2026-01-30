@@ -1,12 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 from typing import List, Optional
-from sqlalchemy.orm import Session
 
-from app.db import Session as DBSession, get_db
 from app.xpert.service import xpert_service
-from app.xpert.models import SubscriptionSource
 import config
 
 router = APIRouter(prefix="/xpert", tags=["Xpert Panel"])
@@ -26,9 +23,6 @@ class SourceResponse(BaseModel):
     priority: int
     config_count: int
     success_rate: float
-    
-    class Config:
-        from_attributes = True
 
 
 class StatsResponse(BaseModel):
@@ -41,61 +35,80 @@ class StatsResponse(BaseModel):
     domain: str
 
 
-@router.get("/stats", response_model=StatsResponse)
-async def get_stats(db: Session = Depends(get_db)):
+@router.get("/stats")
+async def get_stats():
     """Получение статистики Xpert Panel"""
-    stats = xpert_service.get_stats(db)
-    stats["target_ips"] = config.XPERT_TARGET_CHECK_IPS
-    stats["domain"] = config.XPERT_DOMAIN
-    return stats
+    return xpert_service.get_stats()
 
 
-@router.get("/sources", response_model=List[SourceResponse])
-async def get_sources(db: Session = Depends(get_db)):
+@router.get("/sources")
+async def get_sources():
     """Получение списка источников подписок"""
-    return xpert_service.get_sources(db)
+    sources = xpert_service.get_sources()
+    return [
+        {
+            "id": s.id,
+            "name": s.name,
+            "url": s.url,
+            "enabled": s.enabled,
+            "priority": s.priority,
+            "config_count": s.config_count,
+            "success_rate": s.success_rate,
+            "last_fetched": s.last_fetched
+        }
+        for s in sources
+    ]
 
 
-@router.post("/sources", response_model=SourceResponse)
-async def add_source(source: SourceCreate, db: Session = Depends(get_db)):
+@router.post("/sources")
+async def add_source(source: SourceCreate):
     """Добавление источника подписки"""
     try:
-        return await xpert_service.add_source(db, source.name, source.url, source.priority)
+        s = xpert_service.add_source(source.name, source.url, source.priority)
+        return {
+            "id": s.id,
+            "name": s.name,
+            "url": s.url,
+            "enabled": s.enabled,
+            "priority": s.priority,
+            "config_count": s.config_count,
+            "success_rate": s.success_rate
+        }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.delete("/sources/{source_id}")
-async def delete_source(source_id: int, db: Session = Depends(get_db)):
+async def delete_source(source_id: int):
     """Удаление источника подписки"""
-    if xpert_service.delete_source(db, source_id):
+    if xpert_service.delete_source(source_id):
         return {"success": True}
     raise HTTPException(status_code=404, detail="Source not found")
 
 
 @router.post("/sources/{source_id}/toggle")
-async def toggle_source(source_id: int, db: Session = Depends(get_db)):
+async def toggle_source(source_id: int):
     """Включение/выключение источника"""
-    source = xpert_service.toggle_source(db, source_id)
+    source = xpert_service.toggle_source(source_id)
     if source:
         return {"success": True, "enabled": source.enabled}
     raise HTTPException(status_code=404, detail="Source not found")
 
 
 @router.post("/update")
-async def force_update(db: Session = Depends(get_db)):
+async def force_update():
     """Принудительное обновление подписок"""
     try:
-        result = await xpert_service.update_subscription(db)
+        result = await xpert_service.update_subscription()
         return {"success": True, **result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/configs")
-async def get_configs(db: Session = Depends(get_db)):
+async def get_configs():
     """Получение списка конфигураций"""
-    configs = xpert_service.get_all_configs(db)
+    configs = xpert_service.get_all_configs()
     return [
         {
             "id": c.id,
@@ -112,17 +125,14 @@ async def get_configs(db: Session = Depends(get_db)):
 
 
 @router.get("/sub")
-async def get_subscription(
-    format: str = "universal",
-    db: Session = Depends(get_db)
-):
+async def get_subscription(format: str = "universal"):
     """Получение агрегированной подписки"""
-    content = xpert_service.generate_subscription(db, format)
+    content = xpert_service.generate_subscription(format)
     
     headers = {
         "Content-Type": "text/plain; charset=utf-8",
         "Profile-Update-Interval": "1",
-        "Subscription-Userinfo": f"upload=0; download=0; total=0; expire=0",
+        "Subscription-Userinfo": "upload=0; download=0; total=0; expire=0",
         "Profile-Title": "Xpert Panel"
     }
     

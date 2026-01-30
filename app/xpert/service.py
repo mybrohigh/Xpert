@@ -1,12 +1,13 @@
 import asyncio
+import base64
 import logging
 from datetime import datetime
 from typing import List, Optional
-from sqlalchemy.orm import Session
 
-from app.db import GetDB
 from app.xpert.models import SubscriptionSource, AggregatedConfig
+from app.xpert.storage import storage
 from app.xpert.checker import checker
+import config as app_config
 
 logger = logging.getLogger(__name__)
 
@@ -14,82 +15,61 @@ logger = logging.getLogger(__name__)
 class XpertService:
     """Сервис агрегации подписок"""
     
-    async def add_source(self, db: Session, name: str, url: str, priority: int = 1) -> SubscriptionSource:
+    def add_source(self, name: str, url: str, priority: int = 1) -> SubscriptionSource:
         """Добавление источника подписки"""
-        source = SubscriptionSource(
-            name=name,
-            url=url,
-            priority=priority,
-            enabled=True
-        )
-        db.add(source)
-        db.commit()
-        db.refresh(source)
-        logger.info(f"Added subscription source: {name}")
-        return source
+        return storage.add_source(name, url, priority)
     
-    def get_sources(self, db: Session) -> List[SubscriptionSource]:
+    def get_sources(self) -> List[SubscriptionSource]:
         """Получение всех источников"""
-        return db.query(SubscriptionSource).all()
+        return storage.get_sources()
     
-    def get_enabled_sources(self, db: Session) -> List[SubscriptionSource]:
+    def get_enabled_sources(self) -> List[SubscriptionSource]:
         """Получение активных источников"""
-        return db.query(SubscriptionSource).filter(SubscriptionSource.enabled == True).all()
+        return storage.get_enabled_sources()
     
-    def toggle_source(self, db: Session, source_id: int) -> Optional[SubscriptionSource]:
+    def toggle_source(self, source_id: int) -> Optional[SubscriptionSource]:
         """Включение/выключение источника"""
-        source = db.query(SubscriptionSource).filter(SubscriptionSource.id == source_id).first()
-        if source:
-            source.enabled = not source.enabled
-            db.commit()
-            db.refresh(source)
-        return source
+        return storage.toggle_source(source_id)
     
-    def delete_source(self, db: Session, source_id: int) -> bool:
+    def delete_source(self, source_id: int) -> bool:
         """Удаление источника"""
-        source = db.query(SubscriptionSource).filter(SubscriptionSource.id == source_id).first()
-        if source:
-            db.delete(source)
-            db.commit()
-            return True
-        return False
+        return storage.delete_source(source_id)
     
-    def get_active_configs(self, db: Session) -> List[AggregatedConfig]:
+    def get_active_configs(self) -> List[AggregatedConfig]:
         """Получение активных конфигураций"""
-        return db.query(AggregatedConfig).filter(AggregatedConfig.is_active == True).order_by(AggregatedConfig.ping_ms).all()
+        return storage.get_active_configs()
     
-    def get_all_configs(self, db: Session) -> List[AggregatedConfig]:
+    def get_all_configs(self) -> List[AggregatedConfig]:
         """Получение всех конфигураций"""
-        return db.query(AggregatedConfig).order_by(AggregatedConfig.ping_ms).all()
+        return storage.get_configs()
     
-    async def update_subscription(self, db: Session) -> dict:
+    async def update_subscription(self) -> dict:
         """Обновление всех подписок"""
-        sources = self.get_enabled_sources(db)
+        sources = self.get_enabled_sources()
         
         if not sources:
             logger.warning("No enabled sources found")
             return {"active_configs": 0, "total_configs": 0}
         
-        # Очищаем старые конфиги
-        db.query(AggregatedConfig).delete()
-        db.commit()
-        
+        all_configs = []
         total_configs = 0
         active_configs = 0
+        config_id = 1
         
         for source in sources:
             try:
                 logger.info(f"Fetching configs from: {source.name}")
-                configs = await checker.fetch_subscription(source.url)
+                raw_configs = await checker.fetch_subscription(source.url)
                 
-                source.last_fetched = datetime.utcnow()
-                source.config_count = len(configs)
+                source.last_fetched = datetime.utcnow().isoformat()
+                source.config_count = len(raw_configs)
                 
                 source_active = 0
-                for raw in configs:
+                for raw in raw_configs:
                     result = await checker.process_config(raw)
                     if result:
                         config_obj = AggregatedConfig(
+                            id=config_id,
                             raw=result["raw"],
                             protocol=result["protocol"],
                             server=result["server"],
@@ -100,51 +80,45 @@ class XpertService:
                             jitter_ms=result["jitter_ms"],
                             packet_loss=result["packet_loss"],
                             is_active=result["is_active"],
-                            last_check=datetime.utcnow()
+                            last_check=datetime.utcnow().isoformat()
                         )
-                        db.add(config_obj)
+                        all_configs.append(config_obj)
+                        config_id += 1
                         total_configs += 1
                         if result["is_active"]:
                             active_configs += 1
                             source_active += 1
                 
-                source.success_rate = (source_active / len(configs) * 100) if configs else 0
-                db.commit()
+                source.success_rate = (source_active / len(raw_configs) * 100) if raw_configs else 0
+                storage.update_source(source)
                 
-                logger.info(f"Source {source.name}: {source_active}/{len(configs)} active configs")
+                logger.info(f"Source {source.name}: {source_active}/{len(raw_configs)} active configs")
                 
             except Exception as e:
                 logger.error(f"Failed to process source {source.name}: {e}")
                 source.success_rate = 0
-                db.commit()
+                storage.update_source(source)
         
+        storage.save_configs(all_configs)
         logger.info(f"Subscription update complete: {active_configs}/{total_configs} active configs")
         return {"active_configs": active_configs, "total_configs": total_configs}
     
-    def generate_subscription(self, db: Session, format: str = "universal") -> str:
+    def generate_subscription(self, format: str = "universal") -> str:
         """Генерация подписки в указанном формате"""
-        configs = self.get_active_configs(db)
+        configs = self.get_active_configs()
         
         if format == "base64":
             content = "\n".join([c.raw for c in configs])
-            import base64
             return base64.b64encode(content.encode()).decode()
         else:
             return "\n".join([c.raw for c in configs])
     
-    def get_stats(self, db: Session) -> dict:
+    def get_stats(self) -> dict:
         """Получение статистики"""
-        sources = self.get_sources(db)
-        configs = self.get_all_configs(db)
-        active_configs = [c for c in configs if c.is_active]
-        
-        return {
-            "total_sources": len(sources),
-            "enabled_sources": len([s for s in sources if s.enabled]),
-            "total_configs": len(configs),
-            "active_configs": len(active_configs),
-            "avg_ping": sum(c.ping_ms for c in active_configs) / len(active_configs) if active_configs else 0
-        }
+        stats = storage.get_stats()
+        stats["target_ips"] = app_config.XPERT_TARGET_CHECK_IPS
+        stats["domain"] = app_config.XPERT_DOMAIN
+        return stats
 
 
 xpert_service = XpertService()

@@ -1,36 +1,46 @@
+from dataclasses import dataclass, field, asdict
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Boolean, Float, DateTime, Text
-from app.db.base import Base
+from typing import Optional
 
 
-class SubscriptionSource(Base):
-    __tablename__ = "subscription_sources"
+@dataclass
+class SubscriptionSource:
+    id: int = 0
+    name: str = ""
+    url: str = ""
+    enabled: bool = True
+    priority: int = 1
+    last_fetched: Optional[str] = None
+    config_count: int = 0
+    success_rate: float = 0.0
+    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
     
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(255), nullable=False)
-    url = Column(String(1024), nullable=False, unique=True)
-    enabled = Column(Boolean, default=True)
-    priority = Column(Integer, default=1)
-    last_fetched = Column(DateTime, nullable=True)
-    config_count = Column(Integer, default=0)
-    success_rate = Column(Float, default=0.0)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-
-class AggregatedConfig(Base):
-    __tablename__ = "aggregated_configs"
+    def to_dict(self):
+        return asdict(self)
     
-    id = Column(Integer, primary_key=True, index=True)
-    raw = Column(Text, nullable=False)
-    protocol = Column(String(50), nullable=False)
-    server = Column(String(255), nullable=False)
-    port = Column(Integer, nullable=False)
-    remarks = Column(String(255), nullable=True)
-    source_id = Column(Integer, nullable=True)
-    ping_ms = Column(Float, default=999.0)
-    jitter_ms = Column(Float, default=0.0)
-    packet_loss = Column(Float, default=0.0)
-    is_active = Column(Boolean, default=False)
-    last_check = Column(DateTime, default=datetime.utcnow)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    @classmethod
+    def from_dict(cls, data: dict):
+        return cls(**data)
+
+
+@dataclass
+class AggregatedConfig:
+    id: int = 0
+    raw: str = ""
+    protocol: str = ""
+    server: str = ""
+    port: int = 0
+    remarks: str = ""
+    source_id: int = 0
+    ping_ms: float = 999.0
+    jitter_ms: float = 0.0
+    packet_loss: float = 0.0
+    is_active: bool = False
+    last_check: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    
+    def to_dict(self):
+        return asdict(self)
+    
+    @classmethod
+    def from_dict(cls, data: dict):
+        return cls(**data)
