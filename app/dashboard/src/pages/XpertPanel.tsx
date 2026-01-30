@@ -37,8 +37,6 @@ import {
   chakra,
   useBreakpointValue,
   Grid,
-  GridItem,
-  Divider,
 } from "@chakra-ui/react";
 import { Header } from "components/Header";
 import { Footer } from "components/Footer";
@@ -210,32 +208,6 @@ export const XpertPanel: FC = () => {
     }
   };
 
-  const handleSyncMarzban = async () => {
-    setUpdating(true);
-    try {
-      const result = await fetch("/api/xpert/sync-marzban", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${getAuthToken()}` },
-      });
-      const data = await result.json();
-      toast({
-        title: "Marzban sync complete",
-        description: `${data.total_synced || 0} configs synced to Marzban`,
-        status: "success",
-        duration: 5000,
-      });
-      loadData();
-    } catch (error) {
-      toast({
-        title: "Error syncing to Marzban",
-        status: "error",
-        duration: 3000,
-      });
-    } finally {
-      setUpdating(false);
-    }
-  };
-
   const handleUpdate = async () => {
     setUpdating(true);
     try {
@@ -270,7 +242,7 @@ export const XpertPanel: FC = () => {
   }
 
   return (
-    <VStack justifyContent="space-between" minH="100vh" p={useBreakpointValue({ base: 4, md: 6 })} rowGap={4}>
+    <VStack justifyContent="space-between" minH="100vh" p={6} rowGap={4}>
       <Box w="full">
         <Header />
 
@@ -278,49 +250,38 @@ export const XpertPanel: FC = () => {
         {stats && (
           <Card mt="4">
             <CardHeader>
-              <Heading size={useBreakpointValue({ base: "sm", md: "md" })}>
-                Xpert Panel Statistics
-              </Heading>
+              <Heading size="md">Xpert Panel Statistics</Heading>
             </CardHeader>
             <CardBody>
-              <Grid 
-                templateColumns={useBreakpointValue({ base: "repeat(2, 1fr)", md: "repeat(3, 1fr)", lg: "repeat(5, 1fr)" })}
-                gap={4}
-              >
+              <Flex gap={4} flexWrap="wrap">
                 <Stat>
-                  <StatLabel fontSize={useBreakpointValue({ base: "xs", md: "sm" })}>Total Sources</StatLabel>
-                  <StatNumber fontSize={useBreakpointValue({ base: "lg", md: "xl" })}>{stats.total_sources}</StatNumber>
+                  <StatLabel>Total Sources</StatLabel>
+                  <StatNumber>{stats.total_sources}</StatNumber>
                 </Stat>
                 <Stat>
-                  <StatLabel fontSize={useBreakpointValue({ base: "xs", md: "sm" })}>Enabled Sources</StatLabel>
-                  <StatNumber fontSize={useBreakpointValue({ base: "lg", md: "xl" })}>{stats.enabled_sources}</StatNumber>
+                  <StatLabel>Enabled Sources</StatLabel>
+                  <StatNumber>{stats.enabled_sources}</StatNumber>
                 </Stat>
                 <Stat>
-                  <StatLabel fontSize={useBreakpointValue({ base: "xs", md: "sm" })}>Total Configs</StatLabel>
-                  <StatNumber fontSize={useBreakpointValue({ base: "lg", md: "xl" })}>{stats.total_configs}</StatNumber>
+                  <StatLabel>Total Configs</StatLabel>
+                  <StatNumber>{stats.total_configs}</StatNumber>
                 </Stat>
                 <Stat>
-                  <StatLabel fontSize={useBreakpointValue({ base: "xs", md: "sm" })}>Active Configs</StatLabel>
-                  <StatNumber color="green.500" fontSize={useBreakpointValue({ base: "lg", md: "xl" })}>
-                    {stats.active_configs}
-                  </StatNumber>
+                  <StatLabel>Active Configs</StatLabel>
+                  <StatNumber color="green.500">{stats.active_configs}</StatNumber>
                 </Stat>
                 <Stat>
-                  <StatLabel fontSize={useBreakpointValue({ base: "xs", md: "sm" })}>Avg Ping</StatLabel>
-                  <StatNumber fontSize={useBreakpointValue({ base: "lg", md: "xl" })}>
-                    {stats.avg_ping.toFixed(0)} ms
-                  </StatNumber>
+                  <StatLabel>Avg Ping</StatLabel>
+                  <StatNumber>{stats.avg_ping.toFixed(0)} ms</StatNumber>
                 </Stat>
-              </Grid>
+              </Flex>
               <Box mt={4}>
-                <VStack align="start" spacing={1}>
-                  <Text fontSize="sm" color="gray.500" noOfLines={2}>
-                    Target IPs: {stats.target_ips.join(", ")}
-                  </Text>
-                  <Text fontSize="sm" color="gray.500">
-                    Domain: {stats.domain}
-                  </Text>
-                </VStack>
+                <Text fontSize="sm" color="gray.500">
+                  Target IPs: {stats.target_ips.join(", ")}
+                </Text>
+                <Text fontSize="sm" color="gray.500">
+                  Domain: {stats.domain}
+                </Text>
               </Box>
             </CardBody>
           </Card>
@@ -329,119 +290,44 @@ export const XpertPanel: FC = () => {
         {/* Sources */}
         <Card mt="4">
           <CardHeader>
-            <VStack align="start" spacing={3} w="full">
-              <Heading size={useBreakpointValue({ base: "sm", md: "md" })}>
-                Subscription Sources
-              </Heading>
-              <VStack spacing={2} w="full">
+            <Flex justify="space-between" align="center">
+              <Heading size="md">Subscription Sources</Heading>
+              <HStack>
                 <Button
                   leftIcon={<RepeatIcon />}
                   colorScheme="blue"
                   onClick={handleUpdate}
                   isLoading={updating}
-                  w="full"
-                  size={useBreakpointValue({ base: "sm", md: "md" })}
                 >
                   Update Now
                 </Button>
-                <Button
-                  leftIcon={<RepeatIcon />}
-                  colorScheme="purple"
-                  onClick={handleSyncMarzban}
-                  isLoading={updating}
-                  w="full"
-                  size={useBreakpointValue({ base: "sm", md: "md" })}
-                >
-                  Sync to Marzban
-                </Button>
-                <Button 
-                  colorScheme="green" 
-                  onClick={onOpen}
-                  w="full"
-                  size={useBreakpointValue({ base: "sm", md: "md" })}
-                >
+                <Button colorScheme="green" onClick={onOpen}>
                   Add Source
                 </Button>
-              </VStack>
-            </VStack>
+              </HStack>
+            </Flex>
           </CardHeader>
           <CardBody>
-            {/* Mobile View - Cards */}
-            {useBreakpointValue({ base: true, md: false }) ? (
-              <VStack spacing={3} w="full">
+            <Table variant="simple">
+              <Thead>
+                <Tr>
+                  <Th>Name</Th>
+                  <Th>URL</Th>
+                  <Th>Configs</Th>
+                  <Th>Success Rate</Th>
+                  <Th>Last Fetched</Th>
+                  <Th>Enabled</Th>
+                  <Th>Actions</Th>
+                </Tr>
+              </Thead>
+              <Tbody>
                 {sources.map((source) => (
-                  <Card key={source.id} w="full" border="1px solid" borderColor="gray.200">
-                    <CardBody p={4}>
-                      <VStack align="start" spacing={2} w="full">
-                        <Flex justify="space-between" align="center" w="full">
-                          <Text fontWeight="bold" fontSize="sm">{source.name}</Text>
-                          <Switch
-                            isChecked={source.enabled}
-                            onChange={() => handleToggleSource(source.id)}
-                            size="sm"
-                          />
-                        </Flex>
-                        
-                        <Text fontSize="xs" color="gray.600" noOfLines={2}>
-                          {source.url}
-                        </Text>
-                        
-                        <Grid templateColumns="repeat(2, 1fr)" gap={2} w="full">
-                          <Box>
-                            <Text fontSize="xs" color="gray.500">Configs</Text>
-                            <Text fontSize="sm" fontWeight="medium">{source.config_count}</Text>
-                          </Box>
-                          <Box>
-                            <Text fontSize="xs" color="gray.500">Success Rate</Text>
-                            <Text fontSize="sm" fontWeight="medium" color={source.success_rate > 80 ? "green.500" : "yellow.500"}>
-                              {source.success_rate.toFixed(1)}%
-                            </Text>
-                          </Box>
-                        </Grid>
-                        
-                        {source.last_fetched && (
-                          <Text fontSize="xs" color="gray.500">
-                            Last: {new Date(source.last_fetched).toLocaleDateString()}
-                          </Text>
-                        )}
-                        
-                        <Flex justify="end" w="full">
-                          <IconButton
-                            aria-label="Delete source"
-                            icon={<DeleteIcon />}
-                            colorScheme="red"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDeleteSource(source.id)}
-                          />
-                        </Flex>
-                      </VStack>
-                    </CardBody>
-                  </Card>
-                ))}
-              </VStack>
-            ) : (
-              /* Desktop View - Table */
-              <Table variant="simple">
-                <Thead>
-                  <Tr>
-                    <Th>Name</Th>
-                    <Th>URL</Th>
-                    <Th>Configs</Th>
-                    <Th>Success Rate</Th>
-                    <Th>Last Fetched</Th>
-                    <Th>Enabled</Th>
-                    <Th>Actions</Th>
-                  </Tr>
-                </Thead>
-                <Tbody>
-                  {sources.map((source) => (
-                    <Tr key={source.id}>
-                      <Td>{source.name}</Td>
-                      <Td fontSize="sm" maxW="300px" isTruncated>
-                        {source.url}
-                      </Td>
-                      <Td>{source.config_count}</Td>
+                  <Tr key={source.id}>
+                    <Td>{source.name}</Td>
+                    <Td fontSize="sm" maxW="300px" isTruncated>
+                      {source.url}
+                    </Td>
+                    <Td>{source.config_count}</Td>
                     <Td>{source.success_rate.toFixed(1)}%</Td>
                     <Td fontSize="sm">
                       {source.last_fetched
@@ -467,89 +353,29 @@ export const XpertPanel: FC = () => {
                 ))}
               </Tbody>
             </Table>
-            )}
           </CardBody>
         </Card>
 
         {/* Configs */}
         <Card mt="4">
           <CardHeader>
-            <Heading size={useBreakpointValue({ base: "sm", md: "md" })}>
-              Active Configurations ({configs.filter(c => c.is_active).length})
-            </Heading>
+            <Heading size="md">Active Configurations ({configs.filter(c => c.is_active).length})</Heading>
           </CardHeader>
           <CardBody>
-            {/* Mobile View - Cards */}
-            {useBreakpointValue({ base: true, md: false }) ? (
-              <VStack spacing={3} w="full">
+            <Table variant="simple" size="sm">
+              <Thead>
+                <Tr>
+                  <Th>Protocol</Th>
+                  <Th>Server</Th>
+                  <Th>Port</Th>
+                  <Th>Remarks</Th>
+                  <Th>Ping</Th>
+                  <Th>Loss</Th>
+                  <Th>Status</Th>
+                </Tr>
+              </Thead>
+              <Tbody>
                 {configs
-                  .filter((c) => c.is_active)
-                  .slice(0, 20) // Limit for mobile
-                  .map((config) => (
-                    <Card key={config.id} w="full" border="1px solid" borderColor="gray.200">
-                      <CardBody p={3}>
-                        <VStack align="start" spacing={2} w="full">
-                          <Flex justify="space-between" align="center" w="full">
-                            <Text fontWeight="bold" fontSize="sm" textTransform="uppercase">
-                              {config.protocol}
-                            </Text>
-                            <Box
-                              px={2}
-                              py={1}
-                              bg="green.500"
-                              color="white"
-                              borderRadius="md"
-                              fontSize="xs"
-                            >
-                              Active
-                            </Box>
-                          </Flex>
-                          
-                          <Text fontSize="sm" fontWeight="medium">
-                            {config.server}:{config.port}
-                          </Text>
-                          
-                          {config.remarks && (
-                            <Text fontSize="xs" color="gray.600" noOfLines={1}>
-                              {config.remarks}
-                            </Text>
-                          )}
-                          
-                          <Grid templateColumns="repeat(2, 1fr)" gap={2} w="full">
-                            <Box>
-                              <Text fontSize="xs" color="gray.500">Ping</Text>
-                              <Text fontSize="sm" fontWeight="medium" color={config.ping_ms < 200 ? "green.500" : "yellow.500"}>
-                                {config.ping_ms.toFixed(0)}ms
-                              </Text>
-                            </Box>
-                            <Box>
-                              <Text fontSize="xs" color="gray.500">Loss</Text>
-                              <Text fontSize="sm" fontWeight="medium" color={config.packet_loss < 10 ? "green.500" : "yellow.500"}>
-                                {config.packet_loss.toFixed(1)}%
-                              </Text>
-                            </Box>
-                          </Grid>
-                        </VStack>
-                      </CardBody>
-                    </Card>
-                  ))}
-              </VStack>
-            ) : (
-              /* Desktop View - Table */
-              <Table variant="simple" size="sm">
-                <Thead>
-                  <Tr>
-                    <Th>Protocol</Th>
-                    <Th>Server</Th>
-                    <Th>Port</Th>
-                    <Th>Remarks</Th>
-                    <Th>Ping</Th>
-                    <Th>Loss</Th>
-                    <Th>Status</Th>
-                  </Tr>
-                </Thead>
-                <Tbody>
-                  {configs
                   .filter((c) => c.is_active)
                   .slice(0, 20)
                   .map((config) => (
@@ -569,7 +395,6 @@ export const XpertPanel: FC = () => {
                   ))}
               </Tbody>
             </Table>
-            )}
             {configs.filter((c) => c.is_active).length > 20 && (
               <Text mt={2} fontSize="sm" color="gray.500">
                 Showing 20 of {configs.filter((c) => c.is_active).length} active configs
@@ -582,7 +407,7 @@ export const XpertPanel: FC = () => {
       <Footer />
 
       {/* Add Source Modal */}
-      <Modal isOpen={isOpen} onClose={onClose} size={useBreakpointValue({ base: "sm", md: "md" })}>
+      <Modal isOpen={isOpen} onClose={onClose}>
         <ModalOverlay />
         <ModalContent>
           <ModalHeader>Add Subscription Source</ModalHeader>
@@ -590,29 +415,27 @@ export const XpertPanel: FC = () => {
           <ModalBody>
             <Stack spacing={4}>
               <FormControl isRequired>
-                <FormLabel fontSize={useBreakpointValue({ base: "sm", md: "md" })}>Name</FormLabel>
+                <FormLabel>Name</FormLabel>
                 <Input
                   value={newSource.name}
                   onChange={(e) =>
                     setNewSource({ ...newSource, name: e.target.value })
                   }
                   placeholder="My Subscription"
-                  size={useBreakpointValue({ base: "sm", md: "md" })}
                 />
               </FormControl>
               <FormControl isRequired>
-                <FormLabel fontSize={useBreakpointValue({ base: "sm", md: "md" })}>URL</FormLabel>
+                <FormLabel>URL</FormLabel>
                 <Input
                   value={newSource.url}
                   onChange={(e) =>
                     setNewSource({ ...newSource, url: e.target.value })
                   }
                   placeholder="https://example.com/subscription"
-                  size={useBreakpointValue({ base: "sm", md: "md" })}
                 />
               </FormControl>
               <FormControl>
-                <FormLabel fontSize={useBreakpointValue({ base: "sm", md: "md" })}>Priority</FormLabel>
+                <FormLabel>Priority</FormLabel>
                 <Input
                   type="number"
                   value={newSource.priority}
@@ -620,24 +443,18 @@ export const XpertPanel: FC = () => {
                     setNewSource({ ...newSource, priority: parseInt(e.target.value) || 1 })
                   }
                   placeholder="1"
-                  size={useBreakpointValue({ base: "sm", md: "md" })}
                 />
               </FormControl>
             </Stack>
           </ModalBody>
           <ModalFooter>
-            <Button
-              variant="ghost"
-              onClick={onClose}
-              size={useBreakpointValue({ base: "sm", md: "md" })}
-            >
+            <Button variant="ghost" onClick={onClose}>
               Cancel
             </Button>
             <Button
               colorScheme="blue"
               onClick={handleAddSource}
               isLoading={loading}
-              size={useBreakpointValue({ base: "sm", md: "md" })}
             >
               Add Source
             </Button>
