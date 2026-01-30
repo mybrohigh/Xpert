@@ -81,8 +81,16 @@ def generate_v2ray_links(proxies: dict, inbounds: dict, extra_data: dict, revers
         if expire > 0 and expire <= 0:
             return conf.render(reverse=reverse)
         
-        # Если все ок, добавляем конфиги из Xpert Panel
+        # Если все ок, добавляем конфиги из Xpert Panel с учетом реальной статистики
         xpert_configs = xpert_service.get_active_configs()
+        
+        # Фильтруем на основе реальной статистики пингов пользователей
+        try:
+            from app.xpert.ping_stats import ping_stats_service
+            xpert_configs = ping_stats_service.get_healthy_configs(xpert_configs)
+        except Exception as e:
+            # Если статистика недоступна, используем оригинальные конфиги
+            pass
         
         for config in xpert_configs:
             conf.add_link(config.raw)

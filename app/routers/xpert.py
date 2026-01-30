@@ -5,6 +5,7 @@ from typing import List, Optional
 
 from app.xpert.service import xpert_service
 from app.xpert.marzban_integration import marzban_integration
+from app.xpert.ping_stats import ping_stats_service
 import config
 
 router = APIRouter(prefix="/xpert", tags=["Xpert Panel"])
@@ -24,6 +25,14 @@ class SourceResponse(BaseModel):
     priority: int
     config_count: int
     success_rate: float
+
+
+class PingReport(BaseModel):
+    server: str
+    port: int
+    protocol: str
+    ping_ms: float
+    success: bool
 
 
 class StatsResponse(BaseModel):
@@ -131,6 +140,52 @@ async def sync_to_marzban():
     try:
         result = marzban_integration.sync_active_configs_to_marzban()
         return {"success": True, **result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/ping-report")
+async def report_ping(ping_data: PingReport, user_id: int = 1):
+    """Запись результата пинга от пользователя"""
+    try:
+        ping_stats_service.record_ping(
+            server=ping_data.server,
+            port=ping_data.port,
+            protocol=ping_data.protocol,
+            user_id=user_id,
+            ping_ms=ping_data.ping_ms,
+            success=ping_data.success
+        )
+        return {"success": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/server-health/{server}/{port}/{protocol}")
+async def get_server_health(server: str, port: int, protocol: str):
+    """Получение статистики здоровья сервера"""
+    try:
+        health = ping_stats_service.get_server_health(server, port, protocol)
+        return health
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/ping-stats")
+async def get_ping_stats():
+    """Получение сводной статистики пингов"""
+    try:
+        return ping_stats_service.get_stats_summary()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/cleanup-stats")
+async def cleanup_ping_stats(days: int = 7):
+    """Очистка старой статистики"""
+    try:
+        ping_stats_service.cleanup_old_stats(days)
+        return {"success": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

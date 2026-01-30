@@ -1,6 +1,46 @@
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
+
+
+@dataclass
+class UserPingStats:
+    """Статистика пингов от пользователей"""
+    server: str = ""
+    port: int = 0
+    protocol: str = ""
+    user_id: int = 0
+    ping_ms: float = 999.0
+    success_count: int = 0
+    fail_count: int = 0
+    last_ping: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    
+    @property
+    def success_rate(self) -> float:
+        total = self.success_count + self.fail_count
+        if total == 0:
+            return 0.0
+        return (self.success_count / total) * 100
+    
+    @property
+    def avg_ping(self) -> float:
+        return self.ping_ms
+    
+    def is_healthy(self, min_success_rate: float = 70.0, max_ping: float = 1000.0) -> bool:
+        """Проверка здоровья сервера на основе статистики"""
+        return (
+            self.success_rate >= min_success_rate and
+            self.avg_ping <= max_ping and
+            self.success_count > 0
+        )
+    
+    def to_dict(self):
+        return asdict(self)
+    
+    @classmethod
+    def from_dict(cls, data: dict):
+        return cls(**data)
 
 
 @dataclass
