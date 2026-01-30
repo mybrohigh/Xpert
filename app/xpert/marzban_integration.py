@@ -27,28 +27,24 @@ class MarzbanIntegration:
         if hasattr(self, 'db_session'):
             self.db_session.close()
     
-    def get_inbound_tag_for_protocol(self, protocol: str) -> str:
-        """Получение тега inbound для протокола"""
-        protocol_mapping = {
-            "vless": "VLESS_INBOUND",
-            "vmess": "VMess_INBOUND", 
-            "trojan": "Trojan_INBOUND",
-            "shadowsocks": "SS_INBOUND"
-        }
-        return protocol_mapping.get(protocol.lower(), "DEFAULT_INBOUND")
+    def get_inbound_tag_for_config(self, config: AggregatedConfig) -> str:
+        """Получение тега inbound для конкретного конфига"""
+        protocol = config.protocol.lower()
+        port = config.port
+        return f"{protocol}-in-{port}"
     
     def config_to_proxy_host(self, config: AggregatedConfig) -> ProxyHostModify:
         """Конвертация конфигурации в ProxyHost для Marzban"""
         return ProxyHostModify(
             remark=f"Xpert-{config.protocol.upper()}-{config.server[:15]}",
-            address=config.server,
-            port=config.port,
-            path="",  # Будет заполнено в зависимости от протокола
-            sni="",
-            host="",
-            security="none",
-            alpn="",
-            fingerprint=""
+            address=config.server,  # Это будет хост для inbound
+            port=config.port,  # Используем оригинальный порт из конфига
+            path="",  # Путь будет определяться inbound
+            sni=config.server,  # SNI = адрес сервера
+            host=config.server,  # Host header = адрес сервера
+            security="tls",  # Для TLS протоколов
+            alpn="h2,http/1.1",
+            fingerprint="chrome"
         )
     
     def sync_active_configs_to_marzban(self) -> Dict:
@@ -61,25 +57,25 @@ class MarzbanIntegration:
                 logger.info("No active configs to sync")
                 return {"status": "no_configs", "count": 0}
             
-            # Группируем по протоколам
-            configs_by_protocol = {}
+            # Группируем по протоколам и портам
+            configs_by_inbound = {}
             for config in active_configs:
-                protocol = config.protocol.lower()
-                if protocol not in configs_by_protocol:
-                    configs_by_protocol[protocol] = []
-                configs_by_protocol[protocol].append(config)
+                inbound_tag = self.get_inbound_tag_for_config(config)
+                if inbound_tag not in configs_by_inbound:
+                    configs_by_inbound[inbound_tag] = []
+                configs_by_inbound[inbound_tag].append(config)
             
             synced_count = 0
             errors = []
             
-            # Обрабатываем каждый протокол
-            for protocol, configs in configs_by_protocol.items():
+            # Обрабатываем каждый inbound
+            for inbound_tag, configs in configs_by_inbound.items():
                 try:
-                    result = self._sync_protocol_configs(protocol, configs)
+                    result = self._sync_inbound_configs(inbound_tag, configs)
                     synced_count += result["synced"]
                     errors.extend(result.get("errors", []))
                 except Exception as e:
-                    error_msg = f"Failed to sync {protocol}: {str(e)}"
+                    error_msg = f"Failed to sync inbound {inbound_tag}: {str(e)}"
                     logger.error(error_msg)
                     errors.append(error_msg)
             
@@ -99,10 +95,8 @@ class MarzbanIntegration:
                 "error": str(e)
             }
     
-    def _sync_protocol_configs(self, protocol: str, configs: List[AggregatedConfig]) -> Dict:
-        """Синхронизация конфигов для конкретного протокола"""
-        inbound_tag = self.get_inbound_tag_for_protocol(protocol)
-        
+    def _sync_inbound_configs(self, inbound_tag: str, configs: List[AggregatedConfig]) -> Dict:
+        """Синхронизация конфигов для конкретного inbound"""
         # Получаем или создаем inbound
         inbound = get_or_create_inbound(self.db_session, inbound_tag)
         
@@ -126,22 +120,17 @@ class MarzbanIntegration:
                     proxy_host = self.config_to_proxy_host(config)
                     
                     # Настраиваем параметры для разных протоколов
-                    if protocol.lower() == "vless":
-                        proxy_host.path = f"?id={config.raw.split('vless://')[1].split('@')[0] if '@' in config.raw else ''}"
-                        proxy_host.security = "tls"
-                    elif protocol.lower() == "vmess":
-                        proxy_host.path = f"?id={config.raw.split('vmess://')[1].split('?')[0] if '?' in config.raw else ''}"
+                    if config.protocol.lower() == "shadowsocks":
+                        # Для Shadowsocks не нужен TLS
                         proxy_host.security = "none"
-                    elif protocol.lower() == "trojan":
-                        proxy_host.path = f"?password={config.raw.split('trojan://')[1].split('@')[0] if '@' in config.raw else ''}"
-                        proxy_host.security = "tls"
-                    elif protocol.lower() == "shadowsocks":
-                        proxy_host.security = "none"
+                        proxy_host.sni = ""
+                        proxy_host.alpn = ""
+                        proxy_host.fingerprint = ""
                     
                     # Добавляем хост
                     add_host(self.db_session, inbound_tag, proxy_host)
                     synced_count += 1
-                    logger.info(f"Added {protocol} host: {config.server}:{config.port}")
+                    logger.info(f"Added {config.protocol} host: {config.server}:{config.port}")
                     
                 except Exception as e:
                     error_msg = f"Failed to add host {config.server}: {str(e)}"
