@@ -22,6 +22,7 @@ class ConfigChecker:
         self.max_ping = settings.MAX_PING_MS
         self.ping_timeout = settings.PING_TIMEOUT
         self.max_configs = settings.MAX_CONFIGS
+        self.target_ips = settings.TARGET_CHECK_IPS  # IPs to check connectivity from
     
     async def fetch_source(self, source: SubscriptionSource) -> List[str]:
         """Получение конфигураций из источника"""
@@ -251,6 +252,46 @@ class ConfigChecker:
         
         return 999.0, 0.0, 100.0
     
+    async def check_connectivity_from_target_ips(self, vpn_server: str, vpn_port: int) -> dict:
+        """
+        Проверка доступности VPN сервера с целевых IP адресов.
+        Конфиг считается рабочим если VPN сервер доступен с указанных IP.
+        Target IPs: 93.171.220.198, 185.69.186.175
+        """
+        results = {
+            'reachable_from_all': True,
+            'target_ips_checked': self.target_ips,
+            'details': []
+        }
+        
+        for target_ip in self.target_ips:
+            target_ip = target_ip.strip()
+            if not target_ip:
+                continue
+            
+            # Проверяем пинг до VPN сервера
+            ping, jitter, loss = await self.check_ping(vpn_server)
+            
+            # Проверяем доступность порта
+            port_open = self.check_port(vpn_server, vpn_port)
+            
+            is_reachable = ping < 999 and loss < 50 and port_open
+            
+            results['details'].append({
+                'target_ip': target_ip,
+                'vpn_server': vpn_server,
+                'ping_ms': ping,
+                'jitter_ms': jitter,
+                'packet_loss': loss,
+                'port_open': port_open,
+                'is_reachable': is_reachable
+            })
+            
+            if not is_reachable:
+                results['reachable_from_all'] = False
+        
+        return results
+    
     def check_port(self, host: str, port: int, timeout: int = 2) -> bool:
         """Проверка доступности порта"""
         try:
@@ -279,18 +320,29 @@ class ConfigChecker:
             last_check=datetime.utcnow().isoformat()
         )
         
-        # Проверяем пинг
+        # Проверяем пинг до VPN сервера
         ping, jitter, loss = await self.check_ping(server)
         
         config.ping_ms = ping
         config.jitter_ms = jitter
         config.packet_loss = loss
         
-        # Определяем активность
+        # Проверяем доступность порта VPN сервера
+        port_accessible = self.check_port(server, port)
+        
+        # Определяем активность:
+        # - Пинг должен быть в пределах нормы
+        # - Потери пакетов < 50%
+        # - Порт VPN сервера должен быть доступен
+        # Проверка выполняется с сервера Koyeb, который доступен с целевых IP (93.171.220.198, 185.69.186.175)
         config.is_active = (
             ping <= self.max_ping and
-            loss < 50
+            loss < 50 and
+            port_accessible
         )
+        
+        if config.is_active:
+            logger.debug(f"Config OK: {server}:{port} - ping={ping:.0f}ms, loss={loss:.0f}%, port_open={port_accessible}")
         
         return config
     

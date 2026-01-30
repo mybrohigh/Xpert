@@ -101,7 +101,7 @@ ADMIN_HTML = '''
 
     <main class="max-w-6xl mx-auto px-4 py-8">
         <!-- Stats Cards -->
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8">
             <div class="card p-4">
                 <div class="text-gray-500 text-sm">Источников</div>
                 <div class="text-2xl font-bold text-purple-600" id="stat-sources">0</div>
@@ -117,6 +117,10 @@ ADMIN_HTML = '''
             <div class="card p-4">
                 <div class="text-gray-500 text-sm">Интервал обновления</div>
                 <div class="text-2xl font-bold text-blue-600" id="stat-interval">1ч</div>
+            </div>
+            <div class="card p-4">
+                <div class="text-gray-500 text-sm">Целевые IP</div>
+                <div class="text-xs font-mono text-orange-600" id="stat-target-ips">-</div>
             </div>
         </div>
 
@@ -241,6 +245,11 @@ ADMIN_HTML = '''
                 if (data.last_update) {
                     const date = new Date(data.last_update);
                     document.getElementById('stat-update').textContent = date.toLocaleTimeString();
+                }
+                
+                // Display target IPs
+                if (data.target_ips && data.target_ips.length > 0) {
+                    document.getElementById('stat-target-ips').innerHTML = data.target_ips.map(ip => `<div>${ip}</div>`).join('');
                 }
             } catch (e) {
                 console.error('Failed to load stats:', e);
@@ -489,7 +498,9 @@ async def get_subscription(
 @app.get("/api/stats")
 async def get_stats():
     """Статистика"""
-    return storage.get_stats()
+    stats = storage.get_stats()
+    stats["target_ips"] = settings.TARGET_CHECK_IPS
+    return stats
 
 
 @app.get("/api/sources")

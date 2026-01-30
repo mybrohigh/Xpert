@@ -23,6 +23,10 @@ class Settings:
     PING_TIMEOUT: int = int(os.getenv("PING_TIMEOUT", "3"))
     MAX_CONFIGS: int = int(os.getenv("MAX_CONFIGS", "100"))
     
+    # Target IPs for ping check (configs must be reachable from these IPs)
+    # These are the user's network IPs that will use the VPN
+    TARGET_CHECK_IPS: list = os.getenv("TARGET_CHECK_IPS", "93.171.220.198,185.69.186.175").split(",")
+    
     # Data directory
     DATA_DIR: str = os.getenv("DATA_DIR", "./data")
 
