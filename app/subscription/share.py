@@ -51,9 +51,37 @@ def generate_v2ray_links(proxies: dict, inbounds: dict, extra_data: dict, revers
     # Добавляем обычные конфиги Marzban
     marzban_links = process_inbounds_and_tags(inbounds, proxies, format_variables, conf=conf, reverse=reverse)
     
-    # Добавляем конфиги из Xpert Panel
+    # Добавляем конфиги из Xpert Panel только для активных пользователей
     try:
         from app.xpert.service import xpert_service
+        import config as app_config
+        
+        # Если проверка статуса отключена в настройках, всегда добавляем
+        if not app_config.XPERT_REQUIRE_ACTIVE_STATUS:
+            xpert_configs = xpert_service.get_active_configs()
+            for config in xpert_configs:
+                conf.add_link(config.raw)
+            return conf.render(reverse=reverse)
+        
+        # Проверяем статус пользователя
+        user_status = extra_data.get('status', '')
+        data_limit = extra_data.get('data_limit', 0)
+        used_traffic = extra_data.get('used_traffic', 0)
+        expire = extra_data.get('expire', 0)
+        
+        # Если пользователь неактивен, не добавляем Xpert конфиги
+        if user_status not in ['active', 'on_hold']:
+            return conf.render(reverse=reverse)
+            
+        # Если закончился трафик, не добавляем Xpert конфиги
+        if data_limit > 0 and used_traffic >= data_limit:
+            return conf.render(reverse=reverse)
+            
+        # Если истек срок, не добавляем Xpert конфиги
+        if expire > 0 and expire <= 0:
+            return conf.render(reverse=reverse)
+        
+        # Если все ок, добавляем конфиги из Xpert Panel
         xpert_configs = xpert_service.get_active_configs()
         
         for config in xpert_configs:
