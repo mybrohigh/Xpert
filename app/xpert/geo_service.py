@@ -2,13 +2,16 @@ import re
 import socket
 from typing import Optional, Dict
 import requests
+import logging
+
+logger = logging.getLogger(__name__)
 
 class GeoService:
     def __init__(self):
         # Кэш для результатов геолокации
         self._cache: Dict[str, Dict[str, str]] = {}
         
-        # Флаги стран (emoji)
+        # Флаги стран (emoji) - расширенный список
         self.country_flags = {
             'US': '🇺🇸', 'GB': '🇬🇧', 'DE': '🇩🇪', 'FR': '🇫🇷', 'NL': '🇳🇱',
             'CA': '🇨🇦', 'AU': '🇦🇺', 'JP': '🇯🇵', 'SG': '🇸🇬', 'KR': '🇰🇷',
@@ -28,7 +31,19 @@ class GeoService:
             'AZ': '🇦🇿', 'KZ': '🇰🇿', 'UZ': '🇺🇿', 'KG': '🇰🇬', 'TJ': '🇹🇯',
             'TM': '🇹🇲', 'AF': '🇦🇫', 'PK': '🇵🇰', 'BD': '🇧🇩', 'LK': '🇱🇰',
             'NP': '🇳🇵', 'BT': '🇧🇹', 'MV': '🇲🇻', 'MM': '🇲🇲', 'LA': '🇱🇦',
-            'KH': '🇰🇭', 'BN': '🇧🇳'
+            'KH': '🇰🇭', 'BN': '🇧🇳', 'DO': '🇩🇴', 'CR': '🇨🇷', 'GT': '🇬🇹',
+            'PA': '🇵🇦', 'EC': '🇪🇨', 'BO': '🇧🇴', 'PY': '�🇾', 'UY': '🇺🇾',
+            'NI': '🇳🇮', 'SV': '🇸🇻', 'HN': '�🇭🇳', 'JM': '🇯🇲', 'TT': '🇹🇹',
+            'BB': '🇧🇧', 'GD': '🇬🇩', 'LC': '🇱🇨', 'VC': '🇻🇨', 'AG': '🇦🇬',
+            'DM': '🇩🇲', 'KN': '🇰🇳', 'BS': '🇧🇸', 'BM': '🇧🇲', 'KY': '🇰🇾',
+            'FK': '🇫🇰', 'GI': '🇬🇮', 'IM': '🇮🇲', 'JE': '🇯🇪', 'GG': '🇬🇬',
+            'SH': '🇸🇭', 'MS': '🇲🇸', 'TC': '🇹🇨', 'VG': '🇻🇬', 'AI': '🇦🇮',
+            'PM': '🇵🇲', 'WF': '🇼🇫', 'PF': '🇵🇫', 'NU': '🇳🇺', 'CK': '🇨🇰',
+            'AS': '🇦🇸', 'GU': '🇬🇺', 'MP': '🇲🇵', 'VI': '🇻🇮', 'PR': '🇵🇷',
+            'UM': '🇺🇲', 'PW': '🇵🇼', 'FM': '🇫🇲', 'MH': '🇲🇭', 'KI': '🇰🇮',
+            'NR': '🇳🇷', 'TV': '🇹🇻', 'TO': '🇹🇴', 'WS': '🇼🇸', 'SB': '��🇧',
+            'VU': '🇻🇺', 'FJ': '🇫🇯', 'NC': '🇳🇨', 'PF': '🇵🇫', 'AS': '🇦🇸',
+            'CK': '🇨🇰', 'NU': '🇳🇺', 'TK': '🇹🇰', 'PN': '🇵🇳', 'WF': '🇼🇫'
         }
         
         # Названия стран на английском
@@ -56,7 +71,12 @@ class GeoService:
             'TJ': 'Tajikistan', 'TM': 'Turkmenistan', 'AF': 'Afghanistan', 'PK': 'Pakistan',
             'BD': 'Bangladesh', 'LK': 'Sri Lanka', 'NP': 'Nepal', 'BT': 'Bhutan',
             'MV': 'Maldives', 'MM': 'Myanmar', 'LA': 'Laos', 'KH': 'Cambodia',
-            'BN': 'Brunei'
+            'BN': 'Brunei', 'TH': 'Thailand', 'VN': 'Vietnam', 'MY': 'Malaysia',
+            'ID': 'Indonesia', 'PH': 'Philippines', 'TW': 'Taiwan', 'CN': 'China',
+            'NZ': 'New Zealand', 'CH': 'Switzerland', 'AT': 'Austria', 'BE': 'Belgium',
+            'DK': 'Denmark', 'FI': 'Finland', 'IE': 'Ireland', 'IS': 'Iceland',
+            'LI': 'Liechtenstein', 'LU': 'Luxembourg', 'NO': 'Norway', 'PT': 'Portugal',
+            'SE': 'Sweden', 'ES': 'Spain', 'IT': 'Italy', 'MT': 'Malta'
         }
 
     def get_server_ip(self, server: str) -> Optional[str]:

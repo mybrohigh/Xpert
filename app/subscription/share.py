@@ -58,6 +58,8 @@ def replace_server_names_with_flags(config_raw: str) -> str:
             
         from app.xpert.geo_service import geo_service
         import re
+        import logging
+        logger = logging.getLogger(__name__)
         
         # Регулярное выражение для поиска имен серверов в различных форматах
         # Поддерживает vless, vmess, trojan, shadowsocks и другие протоколы
@@ -79,10 +81,13 @@ def replace_server_names_with_flags(config_raw: str) -> str:
                 # Это похоже на домен
                 try:
                     country_info = geo_service.get_country_info(server_name.split(':')[0])
-                    flag_name = f"{country_info['flag']} {country_info['code']}"
-                    return full_match.replace(server_name, flag_name)
-                except:
-                    pass
+                    flag = country_info['flag']
+                    code = country_info['code']
+                    new_name = f"{flag} {code}"
+                    logger.debug(f"Replaced '{server_name}' with '{new_name}'")
+                    return full_match.replace(server_name, new_name)
+                except Exception as e:
+                    logger.debug(f"Failed to get country for {server_name}: {e}")
             
             # Если не удалось определить, оставляем как есть
             return full_match
@@ -94,9 +99,20 @@ def replace_server_names_with_flags(config_raw: str) -> str:
         remark_pattern = r'(remark="?([^"=,]+)"?)'
         result = re.sub(remark_pattern, replace_name, result)
         
+        # Дополнительная обработка для других полей
+        other_patterns = [
+            r'(ps="?([^"=,]+)"?)',  # ps field
+            r'(id="?([^"=,]+)"?)',   # id field (не UUID)
+        ]
+        
+        for pattern in other_patterns:
+            result = re.sub(pattern, replace_name, result)
+        
+        logger.info(f"Processed config with flags replacement")
         return result
         
     except Exception as e:
+        logger.error(f"Error in replace_server_names_with_flags: {e}")
         # Если что-то пошло не так, возвращаем оригинал
         return config_raw
 
