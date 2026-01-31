@@ -119,13 +119,18 @@ const StatisticCard: FC<PropsWithChildren<StatisticCardProps>> = ({
 export const StatisticsQueryKey = "statistics-query-key";
 export const Statistics: FC<BoxProps> = (props) => {
   const { version } = useDashboard();
-  const { data: systemData } = useQuery({
+  const { data: systemData, error: systemError } = useQuery({
     queryKey: StatisticsQueryKey,
     queryFn: () => fetch("/system"),
     refetchInterval: 5000,
+    retry: 3,
+    retryDelay: 1000,
     onSuccess: ({ version: currentVersion }) => {
       if (version !== currentVersion)
         useDashboard.setState({ version: currentVersion });
+    },
+    onError: (error) => {
+      console.error("Statistics query failed:", error);
     },
   });
   const { t } = useTranslation();

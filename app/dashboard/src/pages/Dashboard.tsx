@@ -19,12 +19,18 @@ import { Statistics } from "../components/Statistics";
 
 export const Dashboard: FC = () => {
   useEffect(() => {
-    try {
-      useDashboard.getState().refetchUsers();
-      fetchInbounds();
-    } catch (error) {
-      console.error("Dashboard initialization failed:", error);
-    }
+    // Добавляем небольшую задержку чтобы убедиться что все компоненты готовы
+    const timer = setTimeout(() => {
+      try {
+        console.log("Dashboard: Starting initialization...");
+        useDashboard.getState().refetchUsers();
+        fetchInbounds();
+      } catch (error) {
+        console.error("Dashboard initialization failed:", error);
+      }
+    }, 200);
+    
+    return () => clearTimeout(timer);
   }, []);
   return (
     <VStack justifyContent="space-between" minH="100vh" p="6" rowGap={4}>

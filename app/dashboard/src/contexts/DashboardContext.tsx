@@ -131,7 +131,11 @@ export const useDashboard = create(
     inbounds: new Map(),
     isEditingCore: false,
     refetchUsers: () => {
-      fetchUsers(get().filters);
+      try {
+        fetchUsers(get().filters);
+      } catch (error) {
+        console.error("refetchUsers failed:", error);
+      }
     },
     resetAllUsage: () => {
       return fetch(`/users/reset`, { method: "POST" }).then(() => {
