@@ -59,8 +59,9 @@ class XpertService:
         
         for source in sources:
             try:
-                logger.info(f"Fetching configs from: {source.name}")
+                logger.info(f"Fetching configs from: {source.name} ({source.url})")
                 raw_configs = await checker.fetch_subscription(source.url)
+                logger.info(f"Fetched {len(raw_configs)} raw configs from {source.name}")
                 
                 source.last_fetched = datetime.utcnow().isoformat()
                 source.config_count = len(raw_configs)
@@ -68,6 +69,7 @@ class XpertService:
                 source_active = 0
                 for raw in raw_configs:
                     result = await checker.process_config(raw)
+                    logger.debug(f"Processed config: {result}")
                     if result:
                         config_obj = AggregatedConfig(
                             id=config_id,
@@ -89,6 +91,8 @@ class XpertService:
                         if result["is_active"]:
                             active_configs += 1
                             source_active += 1
+                        else:
+                            logger.info(f"Config filtered as inactive: {result['server']}:{result['port']} (ping: {result['ping_ms']}ms, loss: {result['packet_loss']}%)")
                 
                 source.success_rate = (source_active / len(raw_configs) * 100) if raw_configs else 0
                 storage.update_source(source)
@@ -97,6 +101,8 @@ class XpertService:
                 
             except Exception as e:
                 logger.error(f"Failed to process source {source.name}: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
                 source.success_rate = 0
                 storage.update_source(source)
         

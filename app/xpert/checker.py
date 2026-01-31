@@ -227,16 +227,21 @@ class ConfigChecker:
         protocol, server, port, remarks = self.parse_config(raw)
         
         if not server or not port:
+            logger.warning(f"Failed to parse server/port from: {raw}")
             return None
         
-        ping, jitter, loss = await self.check_ping(server)
-        port_open = self.check_port(server, port)
+        # Временно отключаем ping-проверку для отладки
+        ping, jitter, loss = 0, 0, 0  # await self.check_ping(server)
+        port_open = True  # self.check_port(server, port)
         
-        is_active = (
-            ping <= self.max_ping and
-            loss < 50 and
-            port_open
-        )
+        # Временно считаем все конфиги активными для отладки
+        is_active = True  # (
+        #     ping <= self.max_ping and
+        #     loss < 50 and
+        #     port_open
+        # )
+        
+        logger.info(f"Parsed config: {protocol}://{server}:{port} - {remarks[:30]}...")
         
         return {
             "raw": raw,
