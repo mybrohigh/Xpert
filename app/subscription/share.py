@@ -48,7 +48,7 @@ STATUS_TEXTS = {
 
 
 def replace_server_names_with_flags(config_raw: str) -> str:
-    """Заменяет имена серверов на флаги стран в конфигурации"""
+    """Заменяет имена серверов на флаги стран в конфигурации (Happ compatible)"""
     try:
         import config as app_config
         
@@ -59,12 +59,10 @@ def replace_server_names_with_flags(config_raw: str) -> str:
         from app.xpert.geo_service import geo_service
         import re
         import logging
+        import urllib.parse
         logger = logging.getLogger(__name__)
         
         # Регулярное выражение для поиска имен серверов в различных форматах
-        # Поддерживает vless, vmess, trojan, shadowsocks и другие протоколы
-        
-        # Ищем паттерны вида: name=ServerName или "ServerName"
         name_pattern = r'(name="?([^"=,]+)"?)'
         
         def replace_name(match):
@@ -76,15 +74,17 @@ def replace_server_names_with_flags(config_raw: str) -> str:
                 return full_match
             
             # Пробуем определить страну по имени сервера
-            # Если имя похоже на домен, используем геолокацию
             if '.' in server_name and not server_name.startswith('http'):
-                # Это похоже на домен
                 try:
                     country_info = geo_service.get_country_info(server_name.split(':')[0])
                     flag = country_info['flag']
                     code = country_info['code']
-                    new_name = f"{flag} {code}"
-                    logger.debug(f"Replaced '{server_name}' with '{new_name}'")
+                    
+                    # Конвертируем emoji в UTF-8 URL-encoded для Happ
+                    flag_encoded = urllib.parse.quote(flag.encode('utf-8'))
+                    new_name = f"{flag_encoded} {code}"
+                    
+                    logger.debug(f"Replaced '{server_name}' with '{new_name}' (flag: {flag})")
                     return full_match.replace(server_name, new_name)
                 except Exception as e:
                     logger.debug(f"Failed to get country for {server_name}: {e}")
@@ -95,20 +95,19 @@ def replace_server_names_with_flags(config_raw: str) -> str:
         # Применяем замену
         result = re.sub(name_pattern, replace_name, config_raw)
         
-        # Дополнительная обработка для remark полей в некоторых форматах
+        # Дополнительная обработка для remark полей
         remark_pattern = r'(remark="?([^"=,]+)"?)'
         result = re.sub(remark_pattern, replace_name, result)
         
         # Дополнительная обработка для других полей
         other_patterns = [
             r'(ps="?([^"=,]+)"?)',  # ps field
-            r'(id="?([^"=,]+)"?)',   # id field (не UUID)
         ]
         
         for pattern in other_patterns:
             result = re.sub(pattern, replace_name, result)
         
-        logger.info(f"Processed config with flags replacement")
+        logger.info(f"Processed config with Happ-compatible flags")
         return result
         
     except Exception as e:
