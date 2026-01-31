@@ -120,7 +120,7 @@ def generate_v2ray_links(proxies: dict, inbounds: dict, extra_data: dict, revers
         hide_external_servers = True
     
     # Если закончился трафик - скрываем сторонние сервера  
-    if data_limit > 0 and used_traffic >= data_limit:
+    if data_limit is not None and data_limit > 0 and used_traffic >= data_limit:
         hide_external_servers = True
         
     # Если истек срок - скрываем сторонние сервера
@@ -169,7 +169,7 @@ def generate_v2ray_links(proxies: dict, inbounds: dict, extra_data: dict, revers
                 return conf.render(reverse=reverse)
                 
             # Если закончился трафик, не добавляем Xpert конфиги
-            if data_limit > 0 and used_traffic >= data_limit:
+            if data_limit is not None and data_limit > 0 and used_traffic >= data_limit:
                 return conf.render(reverse=reverse)
                 
             # Если истек срок, не добавляем Xpert конфиги
