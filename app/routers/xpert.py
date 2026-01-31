@@ -109,8 +109,12 @@ async def toggle_source(source_id: int):
 async def force_update():
     """Принудительное обновление подписок"""
     try:
-        result = await xpert_service.update_subscription()
+        # Увеличиваем таймаут для долгих операций
+        import asyncio
+        result = await asyncio.wait_for(xpert_service.update_subscription(), timeout=300)  # 5 минут
         return {"success": True, **result}
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=408, detail="Update timeout - operation took too long")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
