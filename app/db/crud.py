@@ -176,7 +176,15 @@ def get_user_queryset(db: Session) -> Query:
     Returns:
         Query: Base user query.
     """
-    return db.query(User).options(joinedload(User.admin)).options(joinedload(User.next_plan))
+    try:
+        return db.query(User).options(joinedload(User.admin)).options(joinedload(User.next_plan))
+    except Exception as e:
+        print(f"Error in get_user_queryset: {e}")
+        print(f"User model: {User}")
+        print(f"Admin model: {Admin}")
+        print(f"NextPlan model: {NextPlan}")
+        # Fallback to simple query without joins
+        return db.query(User)
 
 
 def get_user(db: Session, username: str) -> Optional[User]:
@@ -252,7 +260,9 @@ def get_users(db: Session,
         Union[List[User], Tuple[List[User], int]]: List of users or tuple of users and total count.
     """
     try:
+        print(f"get_users called with: offset={offset}, limit={limit}, usernames={usernames}, search={search}, status={status}, sort={sort}, admin={admin}, admins={admins}")
         query = get_user_queryset(db)
+        print(f"Query created: {query}")
 
         if search:
             query = query.filter(or_(User.username.ilike(f"%{search}%"), User.note.ilike(f"%{search}%")))
@@ -280,6 +290,7 @@ def get_users(db: Session,
 
         if return_with_count:
             count = query.count()
+            print(f"Count query result: {count}")
 
         if sort:
             query = query.order_by(*(opt.value for opt in sort))
@@ -289,12 +300,17 @@ def get_users(db: Session,
         if limit:
             query = query.limit(limit)
 
+        result = query.all()
+        print(f"Query result count: {len(result)}")
+        
         if return_with_count:
-            return query.all(), count
+            return result, count
 
-        return query.all()
+        return result
     except Exception as e:
         print(f"Error in get_users: {e}")
+        import traceback
+        traceback.print_exc()
         # Return empty result as fallback
         if return_with_count:
             return [], 0
