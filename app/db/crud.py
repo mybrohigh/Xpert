@@ -176,14 +176,7 @@ def get_user_queryset(db: Session) -> Query:
     Returns:
         Query: Base user query.
     """
-    try:
-        # Try simple query first without joins to avoid potential issues
-        return db.query(User)
-    except Exception as e:
-        print(f"Error in get_user_queryset: {e}")
-        print(f"User model: {User}")
-        # Fallback to simple query without joins
-        return db.query(User)
+    return db.query(User).options(joinedload(User.admin)).options(joinedload(User.next_plan))
 
 
 def get_user(db: Session, username: str) -> Optional[User]:
@@ -258,82 +251,47 @@ def get_users(db: Session,
     Returns:
         Union[List[User], Tuple[List[User], int]]: List of users or tuple of users and total count.
     """
-    try:
-        print(f"get_users called with: offset={offset}, limit={limit}, usernames={usernames}, search={search}, status={status}, sort={sort}, admin={admin}, admins={admins}")
-        query = get_user_queryset(db)
-        print(f"Query created: {query}")
+    query = get_user_queryset(db)
 
-        if search:
-            query = query.filter(or_(User.username.ilike(f"%{search}%"), User.note.ilike(f"%{search}%")))
+    if search:
+        query = query.filter(or_(User.username.ilike(f"%{search}%"), User.note.ilike(f"%{search}%")))
 
-        if usernames:
-            query = query.filter(User.username.in_(usernames))
+    if usernames:
+        query = query.filter(User.username.in_(usernames))
 
-        if status:
-            if isinstance(status, list):
-                query = query.filter(User.status.in_(status))
-            else:
-                query = query.filter(User.status == status)
+    if status:
+        if isinstance(status, list):
+            query = query.filter(User.status.in_(status))
+        else:
+            query = query.filter(User.status == status)
 
-        if reset_strategy:
-            if isinstance(reset_strategy, list):
-                query = query.filter(User.data_limit_reset_strategy.in_(reset_strategy))
-            else:
-                query = query.filter(User.data_limit_reset_strategy == reset_strategy)
+    if reset_strategy:
+        if isinstance(reset_strategy, list):
+            query = query.filter(User.data_limit_reset_strategy.in_(reset_strategy))
+        else:
+            query = query.filter(User.data_limit_reset_strategy == reset_strategy)
 
-        if admin:
-            # Use admin_id instead of admin object to avoid relationship issues
-            query = query.filter(User.admin_id == admin.id)
+    if admin:
+        query = query.filter(User.admin == admin)
 
-        if admins:
-            # Use admin_id filter instead of relationship
-            from app.db.models import Admin as AdminModel
-            admin_ids = db.query(AdminModel.id).filter(AdminModel.username.in_(admins)).all()
-            admin_ids = [aid[0] for aid in admin_ids]
-            if admin_ids:
-                query = query.filter(User.admin_id.in_(admin_ids))
-            else:
-                # If no admin IDs found, return empty result
-                if return_with_count:
-                    return [], 0
-                return []
+    if admins:
+        query = query.filter(User.admin.has(Admin.username.in_(admins)))
 
-        if return_with_count:
-            count = query.count()
-            print(f"Count query result: {count}")
+    if return_with_count:
+        count = query.count()
 
-        if sort:
-            try:
-                query = query.order_by(*(opt.value for opt in sort))
-            except Exception as e:
-                print(f"Error applying sort: {e}, sort options: {sort}")
-                # Fallback to created_at desc
-                try:
-                    query = query.order_by(User.created_at.desc())
-                except Exception as sort_error:
-                    print(f"Error applying fallback sort: {sort_error}")
-                    # Continue without sorting
+    if sort:
+        query = query.order_by(*(opt.value for opt in sort))
 
-        if offset:
-            query = query.offset(offset)
-        if limit:
-            query = query.limit(limit)
+    if offset:
+        query = query.offset(offset)
+    if limit:
+        query = query.limit(limit)
 
-        result = query.all()
-        print(f"Query result count: {len(result)}")
-        
-        if return_with_count:
-            return result, count
+    if return_with_count:
+        return query.all(), count
 
-        return result
-    except Exception as e:
-        print(f"Error in get_users: {e}")
-        import traceback
-        traceback.print_exc()
-        # Return empty result as fallback
-        if return_with_count:
-            return [], 0
-        return []
+    return query.all()
 
 
 def get_user_usages(db: Session, dbuser: User, start: datetime, end: datetime) -> List[UserUsageResponse]:

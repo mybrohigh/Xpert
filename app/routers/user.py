@@ -45,48 +45,28 @@ def add_user(
     - **next_plan**: Next user plan (resets after use).
     """
 
+    # TODO expire should be datetime instead of timestamp
+
+    for proxy_type in new_user.proxies:
+        if not xray.config.inbounds_by_protocol.get(proxy_type):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Protocol {proxy_type} is disabled on your server",
+            )
+
     try:
-        print(f"=== add_user API START ===")
-        print(f"add_user called with: {new_user}, admin: {admin}")
-        
-        # TODO expire should be datetime instead of timestamp
+        dbuser = crud.create_user(
+            db, new_user, admin=crud.get_admin(db, admin.username)
+        )
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="User already exists")
 
-        for proxy_type in new_user.proxies:
-            if not xray.config.inbounds_by_protocol.get(proxy_type):
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Protocol {proxy_type} is disabled on your server",
-                )
-
-        try:
-            dbadmin = crud.get_admin(db, admin.username)
-            print(f"DB admin found: {dbadmin}")
-            dbuser = crud.create_user(db, new_user, admin=dbadmin)
-            print(f"User created: {dbuser}")
-        except IntegrityError:
-            db.rollback()
-            raise HTTPException(status_code=409, detail="User already exists")
-        except Exception as e:
-            print(f"Error creating user: {e}")
-            import traceback
-            traceback.print_exc()
-            raise HTTPException(status_code=500, detail="Failed to create user")
-
-        bg.add_task(xray.operations.add_user, dbuser=dbuser)
-        user = UserResponse.model_validate(dbuser)
-        report.user_created(user=user, user_id=dbuser.id, by=admin, user_admin=dbuser.admin)
-        logger.info(f'New user "{dbuser.username}" added')
-        print(f"=== add_user API END ===")
-        return user
-    except HTTPException:
-        print(f"HTTP Exception in add_user API")
-        raise
-    except Exception as e:
-        print(f"Unexpected error in add_user: {e}")
-        import traceback
-        traceback.print_exc()
-        print(f"=== add_user API ERROR FALLBACK ===")
-        raise HTTPException(status_code=500, detail="Unknown error occurred")
+    bg.add_task(xray.operations.add_user, dbuser=dbuser)
+    user = UserResponse.model_validate(dbuser)
+    report.user_created(user=user, user_id=dbuser.id, by=admin, user_admin=dbuser.admin)
+    logger.info(f'New user "{dbuser.username}" added')
+    return user
 
 
 @router.get("/user/{username}", response_model=UserResponse, responses={403: responses._403, 404: responses._404})
@@ -232,50 +212,30 @@ def get_users(
     admin: Admin = Depends(Admin.get_current),
 ):
     """Get all users"""
-    print(f"=== get_users API START ===")
-    try:
-        print(f"get_users API called with: sort={sort}, admin={admin}")
-        print(f"Admin details: username={admin.username}, is_sudo={admin.is_sudo}, id={getattr(admin, 'id', 'NO_ID')}")
-        
-        if sort is not None:
-            opts = sort.strip(",").split(",")
-            sort = []
-            for opt in opts:
-                try:
-                    sort.append(crud.UsersSortingOptions[opt])
-                except KeyError:
-                    raise HTTPException(
-                        status_code=400, detail=f'"{opt}" is not a valid sort option'
-                    )
+    if sort is not None:
+        opts = sort.strip(",").split(",")
+        sort = []
+        for opt in opts:
+            try:
+                sort.append(crud.UsersSortingOptions[opt])
+            except KeyError:
+                raise HTTPException(
+                    status_code=400, detail=f'"{opt}" is not a valid sort option'
+                )
 
-        admins_filter = owner if admin.is_sudo else [admin.username]
-        print(f"Using admins filter: {admins_filter}")
+    users, count = crud.get_users(
+        db=db,
+        offset=offset,
+        limit=limit,
+        search=search,
+        usernames=username,
+        status=status,
+        sort=sort,
+        admins=owner if admin.is_sudo else [admin.username],
+        return_with_count=True,
+    )
 
-        users, count = crud.get_users(
-            db=db,
-            offset=offset,
-            limit=limit,
-            search=search,
-            usernames=username,
-            status=status,
-            sort=sort,
-            admins=admins_filter,
-            return_with_count=True,
-        )
-
-        print(f"Returning {len(users)} users, total: {count}")
-        print(f"=== get_users API END ===")
-        return {"users": users, "total": count}
-    except HTTPException:
-        print(f"HTTP Exception in get_users API")
-        raise
-    except Exception as e:
-        print(f"Error in get_users API: {e}")
-        import traceback
-        traceback.print_exc()
-        # Return empty result as fallback
-        print(f"=== get_users API ERROR FALLBACK ===")
-        return {"users": [], "total": 0}
+    return {"users": users, "total": count}
 
 
 @router.post("/users/reset", responses={403: responses._403, 404: responses._404})

@@ -55,14 +55,7 @@ class Admin(BaseModel):
             if dbadmin.password_reset_at > payload.get("created_at"):
                 return
 
-        try:
-            return cls.model_validate(dbadmin)
-        except Exception as e:
-            # Log validation error for debugging
-            print(f"Admin model validation error: {e}")
-            print(f"DB Admin data: {dbadmin}")
-            # Return basic admin object as fallback
-            return cls(username=dbadmin.username, is_sudo=dbadmin.is_sudo)
+        return cls.model_validate(dbadmin)
 
     @classmethod
     def get_current(cls,
