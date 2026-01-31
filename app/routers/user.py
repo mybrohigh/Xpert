@@ -46,6 +46,7 @@ def add_user(
     """
 
     try:
+        print(f"=== add_user API START ===")
         print(f"add_user called with: {new_user}, admin: {admin}")
         
         # TODO expire should be datetime instead of timestamp
@@ -75,13 +76,16 @@ def add_user(
         user = UserResponse.model_validate(dbuser)
         report.user_created(user=user, user_id=dbuser.id, by=admin, user_admin=dbuser.admin)
         logger.info(f'New user "{dbuser.username}" added')
+        print(f"=== add_user API END ===")
         return user
     except HTTPException:
+        print(f"HTTP Exception in add_user API")
         raise
     except Exception as e:
         print(f"Unexpected error in add_user: {e}")
         import traceback
         traceback.print_exc()
+        print(f"=== add_user API ERROR FALLBACK ===")
         raise HTTPException(status_code=500, detail="Unknown error occurred")
 
 
@@ -228,6 +232,7 @@ def get_users(
     admin: Admin = Depends(Admin.get_current),
 ):
     """Get all users"""
+    print(f"=== get_users API START ===")
     try:
         print(f"get_users API called with: sort={sort}, admin={admin}")
         print(f"Admin details: username={admin.username}, is_sudo={admin.is_sudo}, id={getattr(admin, 'id', 'NO_ID')}")
@@ -259,12 +264,17 @@ def get_users(
         )
 
         print(f"Returning {len(users)} users, total: {count}")
+        print(f"=== get_users API END ===")
         return {"users": users, "total": count}
+    except HTTPException:
+        print(f"HTTP Exception in get_users API")
+        raise
     except Exception as e:
         print(f"Error in get_users API: {e}")
         import traceback
         traceback.print_exc()
         # Return empty result as fallback
+        print(f"=== get_users API ERROR FALLBACK ===")
         return {"users": [], "total": 0}
 
 
