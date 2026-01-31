@@ -260,12 +260,12 @@ export const WhitelistManager: FC = () => {
   return (
     <Card>
       <CardHeader>
-        <Flex justify="space-between" align="center">
+        <HStack justify="space-between" align="center">
           <Heading size="md">IP/Domain Whitelists</Heading>
           <Button colorScheme="purple" onClick={onWhitelistOpen}>
             Create Whitelist
           </Button>
-        </Flex>
+        </HStack>
       </CardHeader>
       <CardBody>
         <Table variant="simple">

@@ -112,9 +112,6 @@ export const XpertPanel: FC = () => {
   const [sources, setSources] = useState<Source[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [configs, setConfigs] = useState<Config[]>([]);
-  const [whitelists, setWhitelists] = useState<Whitelist[]>([]);
-  const [selectedWhitelist, setSelectedWhitelist] = useState<Whitelist | null>(null);
-  const [whitelistHosts, setWhitelistHosts] = useState<Host[]>([]);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [newSource, setNewSource] = useState<SourceCreate>({
@@ -123,26 +120,8 @@ export const XpertPanel: FC = () => {
     priority: 1,
   });
   const [testingUrl, setTestingUrl] = useState(false);
-  const [newWhitelist, setNewWhitelist] = useState<WhitelistCreate>({
-    name: "",
-    description: "",
-  });
-  const [newHost, setNewHost] = useState<HostCreate>({
-    host: "",
-    description: "",
-    country: "",
-  });
   const toast = useToast();
-  const { 
-    isOpen: isWhitelistOpen, 
-    onOpen: onWhitelistOpen, 
-    onClose: onWhitelistClose 
-  } = useDisclosure();
-  const { 
-    isOpen: isHostOpen, 
-    onOpen: onHostOpen, 
-    onClose: onHostClose 
-  } = useDisclosure();
+  const { isOpen, onOpen, onClose } = useDisclosure();
 
   const loadData = async () => {
     setLoading(true);
@@ -473,7 +452,7 @@ export const XpertPanel: FC = () => {
                     <Td>
                       <IconButton
                         aria-label="Delete"
-                        icon={<DeleteIcon />}
+                        icon={<TrashIcon />}
                         colorScheme="red"
                         size="sm"
                         onClick={() => handleDeleteSource(source.id)}
