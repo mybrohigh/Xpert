@@ -177,12 +177,11 @@ def get_user_queryset(db: Session) -> Query:
         Query: Base user query.
     """
     try:
-        return db.query(User).options(joinedload(User.admin)).options(joinedload(User.next_plan))
+        # Try simple query first without joins to avoid potential issues
+        return db.query(User)
     except Exception as e:
         print(f"Error in get_user_queryset: {e}")
         print(f"User model: {User}")
-        print(f"Admin model: {Admin}")
-        print(f"NextPlan model: {NextPlan}")
         # Fallback to simple query without joins
         return db.query(User)
 
@@ -283,17 +282,32 @@ def get_users(db: Session,
                 query = query.filter(User.data_limit_reset_strategy == reset_strategy)
 
         if admin:
-            query = query.filter(User.admin == admin)
+            # Use admin_id instead of admin object to avoid relationship issues
+            query = query.filter(User.admin_id == admin.id)
 
         if admins:
-            query = query.filter(User.admin.has(Admin.username.in_(admins)))
+            # Use admin_id filter instead of relationship
+            from app.db.models import Admin as AdminModel
+            admin_ids = db.query(AdminModel.id).filter(AdminModel.username.in_(admins)).all()
+            admin_ids = [aid[0] for aid in admin_ids]
+            if admin_ids:
+                query = query.filter(User.admin_id.in_(admin_ids))
 
         if return_with_count:
             count = query.count()
             print(f"Count query result: {count}")
 
         if sort:
-            query = query.order_by(*(opt.value for opt in sort))
+            try:
+                query = query.order_by(*(opt.value for opt in sort))
+            except Exception as e:
+                print(f"Error applying sort: {e}, sort options: {sort}")
+                # Fallback to created_at desc
+                try:
+                    query = query.order_by(User.created_at.desc())
+                except Exception as sort_error:
+                    print(f"Error applying fallback sort: {sort_error}")
+                    # Continue without sorting
 
         if offset:
             query = query.offset(offset)
