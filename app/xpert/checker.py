@@ -272,40 +272,18 @@ class ConfigChecker:
         return configs
     
     async def process_config(self, raw: str) -> Optional[dict]:
-        """Обработка одной конфигурации с улучшенной проверкой доступности"""
-        import time
-        
+        """Обработка одной конфигурации - БЕЗ проверки пинга"""
         protocol, server, port, remarks = self.parse_config(raw)
         
         if not server or not port:
             logger.warning(f"Failed to parse server/port from: {raw}")
             return None
         
-        logger.info(f"Testing {protocol}://{server}:{port} - {remarks[:30]}...")
+        logger.info(f"Added config: {protocol}://{server}:{port} - {remarks[:30]}...")
         
-        # Комплексная проверка доступности
-        is_connected, connection_time = await self.check_connectivity(server, port)
-        
-        # Дополнительная ping-проверка (если доступен)
-        if is_connected:
-            ping, jitter, loss = await self.check_ping(server)
-            # Если ping не удался, используем время подключения как пинг
-            if ping >= 999.0:
-                ping = connection_time
-                loss = 0
-        else:
-            ping, jitter, loss = 999.0, 0.0, 100.0
-        
-        # Критерии активности (более гибкие)
-        is_active = (
-            is_connected and  # Главное - доступность
-            ping <= 1000 and  # Пинг до 1 секунды
-            loss < 100        # Потери до 100%
-        )
-        
-        logger.info(f"Result: {protocol}://{server}:{port} - "
-                   f"{'ACTIVE' if is_active else 'INACTIVE'} "
-                   f"(ping: {ping:.1f}ms, loss: {loss:.1f}%, connected: {is_connected})")
+        # ВСЕ конфиги считаем активными - проверка будет в клиенте
+        is_active = True
+        ping, jitter, loss = 0, 0, 0  # Нулевые значения для отображения
         
         return {
             "raw": raw,

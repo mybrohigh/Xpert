@@ -69,7 +69,6 @@ class XpertService:
                 source_active = 0
                 for raw in raw_configs:
                     result = await checker.process_config(raw)
-                    logger.debug(f"Processed config: {result}")
                     if result:
                         config_obj = AggregatedConfig(
                             id=config_id,
@@ -91,13 +90,11 @@ class XpertService:
                         if result["is_active"]:
                             active_configs += 1
                             source_active += 1
-                        else:
-                            logger.info(f"Config filtered as inactive: {result['server']}:{result['port']} (ping: {result['ping_ms']}ms, loss: {result['packet_loss']}%)")
                 
-                source.success_rate = (source_active / len(raw_configs) * 100) if raw_configs else 0
+                source.success_rate = 100.0  # Все конфиги активные
                 storage.update_source(source)
                 
-                logger.info(f"Source {source.name}: {source_active}/{len(raw_configs)} active configs")
+                logger.info(f"Source {source.name}: {source_active}/{len(raw_configs)} configs added")
                 
             except Exception as e:
                 logger.error(f"Failed to process source {source.name}: {e}")
