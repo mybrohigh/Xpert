@@ -47,8 +47,100 @@ STATUS_TEXTS = {
 }
 
 
+def filter_servers_by_region(configs: list, user_ip: str = None) -> list:
+    """Фильтрует сервера по региону пользователя"""
+    try:
+        # Определяем регион пользователя
+        user_region = detect_user_region(user_ip)
+        
+        # Правила фильтрации по регионам
+        region_filters = {
+            'tm': ['TM', 'IR', 'AF', 'UZ', 'KZ'],  # Туркменистан
+            'kz': ['KZ', 'RU', 'UZ', 'KG', 'TM'],  # Казахстан  
+            'ru': ['RU', 'KZ', 'BY', 'UA', 'GE'],  # Россия
+            'global': []  # Все страны
+        }
+        
+        allowed_countries = region_filters.get(user_region, [])
+        
+        if not allowed_countries:  # Global - все сервера
+            return configs
+            
+        filtered_configs = []
+        for config in configs:
+            try:
+                # Получаем страну сервера
+                server_name = config.get('remarks', '')
+                server = config.get('server', '')
+                
+                # Пробуем определить страну
+                country = None
+                if '.' in server:
+                    country_info = geo_service.get_country_info(server)
+                    country = country_info.get('code', 'UNKNOWN')
+                elif server_name:
+                    # Ищем код страны в имени
+                    import re
+                    match = re.search(r'\b([A-Z]{2})\b', server_name)
+                    if match:
+                        country = match.group(1)
+                
+                if country in allowed_countries:
+                    filtered_configs.append(config)
+                    logger.debug(f"Allowed server {server} ({country}) for region {user_region}")
+                else:
+                    logger.debug(f"Filtered out server {server} ({country}) for region {user_region}")
+                    
+            except Exception as e:
+                logger.debug(f"Error filtering server {config}: {e}")
+                # Если не удалось определить, оставляем
+                filtered_configs.append(config)
+        
+        logger.info(f"Filtered {len(configs)} -> {len(filtered_configs)} servers for region {user_region}")
+        return filtered_configs
+        
+    except Exception as e:
+        logger.error(f"Error in region filtering: {e}")
+        return configs  # Возвращаем все если ошибка
+
+def detect_user_region(user_ip: str = None) -> str:
+    """Определяет регион пользователя по IP"""
+    if not user_ip:
+        return 'global'
+    
+    try:
+        import requests
+        response = requests.get(f"http://ip-api.com/json/{user_ip}", timeout=2)
+        if response.status_code == 200:
+            data = response.json()
+            country_code = data.get('countryCode', '').upper()
+            
+            # Маппинг стран на регионы
+            country_to_region = {
+                'TM': 'tm',  # Туркменистан
+                'KZ': 'kz',  # Казахстан  
+                'RU': 'ru',  # Россия
+                'UZ': 'kz',  # Узбекистан -> Казахстан
+                'KG': 'kz',  # Кыргызстан -> Казахстан
+                'TJ': 'kz',  # Таджикистан -> Казахстан
+                'BY': 'ru',  # Беларусь -> Россия
+                'UA': 'ru',  # Украина -> Россия
+                'AZ': 'kz',  # Азербайджан -> Казахстан
+                'AM': 'kz',  # Армения -> Казахстан
+                'GE': 'kz',  # Грузия -> Казахстан
+            }
+            
+            region = country_to_region.get(country_code, 'global')
+            logger.info(f"Detected user region: {country_code} -> {region}")
+            return region
+            
+    except Exception as e:
+        logger.warning(f"Failed to detect user region: {e}")
+    
+    return 'global'
+
+
 def replace_server_names_with_flags(config_raw: str) -> str:
-    """Заменяет имена серверов на флаги стран в конфигурации (Happ compatible)"""
     try:
         import config as app_config
         
@@ -184,6 +276,11 @@ def generate_v2ray_links(proxies: dict, inbounds: dict, extra_data: dict, revers
         # Если проверка статуса отключена в настройках, всегда добавляем Xpert конфиги
         if not app_config.XPERT_REQUIRE_ACTIVE_STATUS:
             xpert_configs = xpert_service.get_active_configs()
+            
+            # Фильтруем сервера по региону пользователя
+            user_ip = extra_data.get('last_ip', None)
+            xpert_configs = filter_servers_by_region(xpert_configs, user_ip)
+            
             for config in xpert_configs:
                 # Заменяем имя сервера на флаг страны
                 config_with_flags = replace_server_names_with_flags(config.raw)
@@ -203,6 +300,10 @@ def generate_v2ray_links(proxies: dict, inbounds: dict, extra_data: dict, revers
             
             # Если все ок, добавляем конфиги из Xpert Panel с учетом реальной статистики
             xpert_configs = xpert_service.get_active_configs()
+            
+            # Фильтруем сервера по региону пользователя
+            user_ip = extra_data.get('last_ip', None)
+            xpert_configs = filter_servers_by_region(xpert_configs, user_ip)
             
             # Фильтруем и берем только топ серверы
             try:
