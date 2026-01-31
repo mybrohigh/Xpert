@@ -251,47 +251,54 @@ def get_users(db: Session,
     Returns:
         Union[List[User], Tuple[List[User], int]]: List of users or tuple of users and total count.
     """
-    query = get_user_queryset(db)
+    try:
+        query = get_user_queryset(db)
 
-    if search:
-        query = query.filter(or_(User.username.ilike(f"%{search}%"), User.note.ilike(f"%{search}%")))
+        if search:
+            query = query.filter(or_(User.username.ilike(f"%{search}%"), User.note.ilike(f"%{search}%")))
 
-    if usernames:
-        query = query.filter(User.username.in_(usernames))
+        if usernames:
+            query = query.filter(User.username.in_(usernames))
 
-    if status:
-        if isinstance(status, list):
-            query = query.filter(User.status.in_(status))
-        else:
-            query = query.filter(User.status == status)
+        if status:
+            if isinstance(status, list):
+                query = query.filter(User.status.in_(status))
+            else:
+                query = query.filter(User.status == status)
 
-    if reset_strategy:
-        if isinstance(reset_strategy, list):
-            query = query.filter(User.data_limit_reset_strategy.in_(reset_strategy))
-        else:
-            query = query.filter(User.data_limit_reset_strategy == reset_strategy)
+        if reset_strategy:
+            if isinstance(reset_strategy, list):
+                query = query.filter(User.data_limit_reset_strategy.in_(reset_strategy))
+            else:
+                query = query.filter(User.data_limit_reset_strategy == reset_strategy)
 
-    if admin:
-        query = query.filter(User.admin == admin)
+        if admin:
+            query = query.filter(User.admin == admin)
 
-    if admins:
-        query = query.filter(User.admin.has(Admin.username.in_(admins)))
+        if admins:
+            query = query.filter(User.admin.has(Admin.username.in_(admins)))
 
-    if return_with_count:
-        count = query.count()
+        if return_with_count:
+            count = query.count()
 
-    if sort:
-        query = query.order_by(*(opt.value for opt in sort))
+        if sort:
+            query = query.order_by(*(opt.value for opt in sort))
 
-    if offset:
-        query = query.offset(offset)
-    if limit:
-        query = query.limit(limit)
+        if offset:
+            query = query.offset(offset)
+        if limit:
+            query = query.limit(limit)
 
-    if return_with_count:
-        return query.all(), count
+        if return_with_count:
+            return query.all(), count
 
-    return query.all()
+        return query.all()
+    except Exception as e:
+        print(f"Error in get_users: {e}")
+        # Return empty result as fallback
+        if return_with_count:
+            return [], 0
+        return []
 
 
 def get_user_usages(db: Session, dbuser: User, start: datetime, end: datetime) -> List[UserUsageResponse]:
