@@ -76,9 +76,16 @@ const fetchUsers = (query: FilterType): Promise<User[]> => {
   }
   useDashboard.setState({ loading: true });
   return fetch("/users", { query })
-    .then((users) => {
+    .then((response: any) => {
+      // API возвращает {users: [], total: 0}, а нам нужен массив пользователей
+      const users = response.users || response || [];
       useDashboard.setState({ users });
       return users;
+    })
+    .catch((error) => {
+      console.error("Failed to fetch users:", error);
+      useDashboard.setState({ users: { users: [], total: 0 } });
+      return [];
     })
     .finally(() => {
       useDashboard.setState({ loading: false });

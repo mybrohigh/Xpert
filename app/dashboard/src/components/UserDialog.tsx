@@ -332,10 +332,12 @@ export const UserDialog: FC<UserDialogProps> = () => {
               key as "proxies" | "username" | "data_limit" | "expire",
               {
                 type: "custom",
-                message: err.response._data.detail[key],
+                message: err?.response._data.detail[key],
               }
             );
           });
+        } else {
+          setError(err?.response?._data?.detail || "Unknown error occurred");
         }
       })
       .finally(() => {
