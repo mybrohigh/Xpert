@@ -326,31 +326,30 @@ def generate_v2ray_links(proxies: dict, inbounds: dict, extra_data: dict, revers
         
         # Получаем разрешенные хосты
         allowed_hosts = whitelist_service.get_all_allowed_hosts()
+        logger.info(f"Found {len(allowed_hosts)} allowed hosts in whitelist")
         
-        # Если есть разрешенные хосты, фильтруем сервера
-        if allowed_hosts:
-            logger.info(f"Found {len(allowed_hosts)} allowed hosts, filtering servers")
-            
-            # Получаем все конфиги из Xpert
-            if not app_config.XPERT_REQUIRE_ACTIVE_STATUS:
-                xpert_configs = xpert_service.get_active_configs()
-            else:
-                # Если пользователь неактивен, не добавляем Xpert конфиги
-                if user_status not in ['active', 'on_hold']:
-                    return conf.render(reverse=reverse)
-                    
-                # Если закончился трафик, не добавляем Xpert конфиги
-                if data_limit is not None and data_limit > 0 and used_traffic >= data_limit:
-                    return conf.render(reverse=reverse)
-                    
-                # Если истек срок, не добавляем Xpert конфиги
-                if expire is not None and expire > 0 and expire <= 0:
-                    return conf.render(reverse=reverse)
+        # Получаем все конфиги из Xpert
+        if not app_config.XPERT_REQUIRE_ACTIVE_STATUS:
+            xpert_configs = xpert_service.get_active_configs()
+        else:
+            # Если пользователь неактивен, не добавляем Xpert конфиги
+            if user_status not in ['active', 'on_hold']:
+                return conf.render(reverse=reverse)
                 
-                xpert_configs = xpert_service.get_active_configs()
+            # Если закончился трафик, не добавляем Xpert конфиги
+            if data_limit is not None and data_limit > 0 and used_traffic >= data_limit:
+                return conf.render(reverse=reverse)
+                
+            # Если истек срок, не добавляем Xpert конфиги
+            if expire is not None and expire > 0 and expire <= 0:
+                return conf.render(reverse=reverse)
             
-            # Фильтруем сервера по разрешенным хостам
+            xpert_configs = xpert_service.get_active_configs()
+        
+        # ВСЕГДА фильтруем сервера по разрешенным хостам
+        if xpert_configs:
             server_configs = [config.raw for config in xpert_configs]
+            logger.info(f"Processing {len(server_configs)} Xpert servers")
             
             if server_configs:
                 logger.info(f"Filtering {len(server_configs)} servers by allowed hosts")
@@ -364,64 +363,7 @@ def generate_v2ray_links(proxies: dict, inbounds: dict, extra_data: dict, revers
                 for config_raw in filtered_configs:
                     config_with_flags = replace_server_names_with_flags(config_raw)
                     conf.add_link(config_with_flags)
-            else:
-                logger.info("No Xpert configs to filter")
-        else:
-            # Если разрешенных хостов нет, используем обычные Xpert конфиги
-            logger.info("No allowed hosts found, using regular Xpert configs")
-            
-            # Если проверка статуса отключена в настройках, всегда добавляем Xpert конфиги
-            if not app_config.XPERT_REQUIRE_ACTIVE_STATUS:
-                xpert_configs = xpert_service.get_active_configs()
-                
-                # Фильтруем сервера по региону пользователя
-                user_ip = extra_data.get('last_ip', None)
-                xpert_configs = filter_servers_by_region(xpert_configs, user_ip)
-                
-                for config in xpert_configs:
-                    # Заменяем имя сервера на флаг страны
-                    config_with_flags = replace_server_names_with_flags(config.raw)
-                    conf.add_link(config_with_flags)
-            else:
-                # Если пользователь неактивен, не добавляем Xpert конфиги
-                if user_status not in ['active', 'on_hold']:
-                    return conf.render(reverse=reverse)
                     
-                # Если закончился трафик, не добавляем Xpert конфиги
-                if data_limit is not None and data_limit > 0 and used_traffic >= data_limit:
-                    return conf.render(reverse=reverse)
-                    
-                # Если истек срок, не добавляем Xpert конфиги
-                if expire is not None and expire > 0 and expire <= 0:
-                    return conf.render(reverse=reverse)
-                
-                # Если все ок, добавляем конфиги из Xpert Panel с учетом реальной статистики
-                xpert_configs = xpert_service.get_active_configs()
-                
-                # Фильтруем сервера по региону пользователя
-                user_ip = extra_data.get('last_ip', None)
-                xpert_configs = filter_servers_by_region(xpert_configs, user_ip)
-                
-                # Фильтруем и берем только топ серверы
-                try:
-                    from app.xpert.ping_stats import ping_stats_service
-                    
-                    # Сначала фильтруем нездоровые
-                    xpert_configs = ping_stats_service.get_healthy_configs(xpert_configs)
-                    
-                    # Затем берем только топ-N
-                    top_limit = app_config.XPERT_TOP_SERVERS_LIMIT
-                    xpert_configs = ping_stats_service.get_top_configs(xpert_configs, top_limit)
-                    
-                except Exception as e:
-                    # Если статистика недоступна, используем оригинальные конфиги
-                    pass
-                
-                for config in xpert_configs:
-                    # Заменяем имя сервера на флаг страны
-                    config_with_flags = replace_server_names_with_flags(config.raw)
-                    conf.add_link(config_with_flags)
-                
     except Exception as e:
         # Если Xpert Panel не настроен, просто игнорируем
         logger.debug(f"Xpert Panel integration failed: {e}")
