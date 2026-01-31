@@ -189,8 +189,7 @@ type UsersTableProps = {} & TableProps;
 export const UsersTable: FC<UsersTableProps> = (props) => {
   const {
     filters,
-    users: { users },
-    users: totalUsers,
+    users: { users, total },
     onEditingUser,
     onFilterChange,
   } = useDashboard();
@@ -212,7 +211,7 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
     () => window.removeEventListener("scroll", calcTop);
   }, []);
 
-  const isFiltered = users.length !== totalUsers.total;
+  const isFiltered = users?.length !== total;
 
   const handleSort = (column: string) => {
     let newSort = filters.sort;
@@ -586,7 +585,7 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
                 <Tr
                   key={user.username}
                   className={classNames("interactive", {
-                    "last-row": i === users.length - 1,
+                    "last-row": i === (users?.length || 0) - 1,
                   })}
                   onClick={() => onEditingUser(user)}
                 >
@@ -618,7 +617,7 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
                 </Tr>
               );
             })}
-          {users.length == 0 && (
+          {(users?.length || 0) == 0 && (
             <Tr>
               <Td colSpan={4}>
                 <EmptySection isFiltered={isFiltered} />
