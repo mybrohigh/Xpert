@@ -173,27 +173,34 @@ class ConfigChecker:
                 if response.status_code == 200:
                     content = response.text
                     
-                    # Попробуем декодировать base64 (несколько попыток)
-                    decoded_content = content
-                    for attempt in range(3):
-                        try:
-                            # Убираем возможные пробелы и переносы
-                            clean_content = content.strip().replace('\n', '').replace('\r', '')
-                            # Добавляем padding если нужно
-                            padding_needed = len(clean_content) % 4
-                            if padding_needed:
-                                clean_content += '=' * (4 - padding_needed)
-                            
-                            decoded = base64.b64decode(clean_content).decode('utf-8')
-                            decoded_content = decoded
-                            break
-                        except Exception as e:
-                            if attempt == 2:  # Последняя попытка
-                                logger.debug(f"Base64 decode failed after 3 attempts: {e}")
-                            continue
-                    
-                    # Используем декодированный контент или оригинал
-                    final_content = decoded_content if decoded_content != content else content
+                    # Проверяем если контент уже содержит готовые конфиги
+                    if any(proto in content for proto in ['vless://', 'vmess://', 'trojan://', 'ss://', 'ssr://']):
+                        # Это готовые конфиги, используем как есть
+                        final_content = content
+                        logger.info(f"Detected direct configs from {url}")
+                    else:
+                        # Попробуем декодировать base64
+                        decoded_content = content
+                        for attempt in range(3):
+                            try:
+                                # Убираем возможные пробелы и переносы
+                                clean_content = content.strip().replace('\n', '').replace('\r', '')
+                                # Добавляем padding если нужно
+                                padding_needed = len(clean_content) % 4
+                                if padding_needed:
+                                    clean_content += '=' * (4 - padding_needed)
+                                
+                                decoded = base64.b64decode(clean_content).decode('utf-8')
+                                decoded_content = decoded
+                                logger.info(f"Successfully decoded base64 from {url}")
+                                break
+                            except Exception as e:
+                                if attempt == 2:  # Последняя попытка
+                                    logger.debug(f"Base64 decode failed after 3 attempts: {e}")
+                                continue
+                        
+                        # Используем декодированный контент или оригинал
+                        final_content = decoded_content if decoded_content != content else content
                     
                     # Разбиваем на строки и фильтруем
                     for line in final_content.split('\n'):
