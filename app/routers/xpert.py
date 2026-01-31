@@ -157,6 +157,36 @@ async def update_host_status(whitelist_id: str, host: str, data: dict):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.delete("/whitelists/{whitelist_id}")
+async def delete_whitelist(whitelist_id: str):
+    """Удалить белый список"""
+    try:
+        from app.xpert.cluster_service import whitelist_service
+        
+        success = whitelist_service.delete_whitelist(whitelist_id)
+        
+        if success:
+            return {"message": "Whitelist deleted successfully"}
+        else:
+            raise HTTPException(status_code=404, detail="Whitelist not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/whitelists/{whitelist_id}/hosts/{host}")
+async def delete_host_from_whitelist(whitelist_id: str, host: str):
+    """Удалить хост из белого списка"""
+    try:
+        from app.xpert.cluster_service import whitelist_service
+        
+        success = whitelist_service.remove_host_from_whitelist(whitelist_id, host)
+        
+        if success:
+            return {"message": "Host removed successfully"}
+        else:
+            raise HTTPException(status_code=404, detail="Whitelist or host not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/allowed-hosts")
 async def get_allowed_hosts():
     """Получить все разрешенные хосты (IP и домены)"""

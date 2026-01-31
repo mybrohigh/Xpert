@@ -145,28 +145,56 @@ class WhitelistService:
         logger.warning(f"Host {host} not found in any whitelist")
         return False
     
-    def get_whitelist_stats(self) -> Dict:
-        """Получает статистику по белым спискам"""
-        stats = {
-            'total_whitelists': len(self.whitelists),
-            'active_whitelists': sum(1 for w in self.whitelists.values() if w.is_active),
-            'total_hosts': sum(len(w.allowed_hosts) for w in self.whitelists.values()),
-            'active_hosts': sum(
-                sum(1 for host in w.allowed_hosts if host.is_active) 
-                for w in self.whitelists.values() if w.is_active
-            )
-        }
-        
-        return stats
-    
     def delete_whitelist(self, whitelist_id: str) -> bool:
         """Удаляет белый список"""
-        if whitelist_id in self.whitelists:
-            del self.whitelists[whitelist_id]
+        if whitelist_id not in self.whitelists:
+            logger.error(f"Host whitelist {whitelist_id} not found")
+            return False
+        
+        del self.whitelists[whitelist_id]
+        self._save_whitelists()
+        
+        logger.info(f"Deleted host whitelist {whitelist_id}")
+        return True
+    
+    def remove_host_from_whitelist(self, whitelist_id: str, host: str) -> bool:
+        """Удаляет хост из белого списка"""
+        if whitelist_id not in self.whitelists:
+            logger.error(f"Host whitelist {whitelist_id} not found")
+            return False
+        
+        whitelist = self.whitelists[whitelist_id]
+        original_count = len(whitelist.allowed_hosts)
+        
+        whitelist.allowed_hosts = [
+            h for h in whitelist.allowed_hosts if h.host != host
+        ]
+        
+        if len(whitelist.allowed_hosts) < original_count:
+            whitelist.updated_at = datetime.utcnow().isoformat()
             self._save_whitelists()
-            logger.info(f"Deleted host whitelist {whitelist_id}")
+            logger.info(f"Removed host {host} from whitelist {whitelist_id}")
             return True
-        return False
+        else:
+            logger.warning(f"Host {host} not found in whitelist {whitelist_id}")
+            return False
+    
+    def get_whitelist_stats(self) -> Dict:
+        """Получает статистику по белым спискам"""
+        total_whitelists = len(self.whitelists)
+        active_whitelists = sum(1 for w in self.whitelists.values() if w.is_active)
+        total_hosts = sum(len(w.allowed_hosts) for w in self.whitelists.values())
+        active_hosts = sum(
+            sum(1 for h in w.allowed_hosts if h.is_active)
+            for w in self.whitelists.values()
+        )
+        
+        return {
+            "total_whitelists": total_whitelists,
+            "active_whitelists": active_whitelists,
+            "total_hosts": total_hosts,
+            "active_hosts": active_hosts
+        }
     
     def get_all_whitelists(self) -> List[HostWhitelist]:
         """Получает все белые списки"""
