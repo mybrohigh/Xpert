@@ -57,8 +57,8 @@ async def get_whitelists():
                     "id": w.id,
                     "name": w.name,
                     "description": w.description,
-                    "ips_count": len(w.allowed_ips),
-                    "active_ips": sum(1 for ip in w.allowed_ips if ip.is_active),
+                    "hosts_count": len(w.allowed_hosts),
+                    "active_hosts": sum(1 for host in w.allowed_hosts if host.is_active),
                     "created_at": w.created_at,
                     "updated_at": w.updated_at,
                     "is_active": w.is_active
