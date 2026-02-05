@@ -8,6 +8,7 @@ from app.xpert.models import SubscriptionSource, AggregatedConfig
 from app.xpert.storage import storage
 from app.xpert.checker import checker
 from app.xpert.marzban_integration import marzban_integration
+from app.xpert.direct_config_service import direct_config_service
 import config as app_config
 
 logger = logging.getLogger(__name__)
@@ -121,14 +122,23 @@ class XpertService:
         return {"active_configs": active_configs, "total_configs": total_configs}
     
     def generate_subscription(self, format: str = "universal") -> str:
-        """Генерация подписки в указанном формате"""
-        configs = self.get_active_configs()
+        """Генерация подписки в указанном формате с учетом прямых конфигураций"""
+        # Получаем обычные активные конфиги
+        regular_configs = self.get_active_configs()
+        
+        # Получаем прямые конфигурации (которые обходят белый список)
+        direct_configs = direct_config_service.get_active_configs()
+        
+        # Объединяем все конфиги
+        all_configs = regular_configs + direct_configs
+        
+        logger.info(f"Generating subscription: {len(regular_configs)} regular + {len(direct_configs)} direct configs")
         
         if format == "base64":
-            content = "\n".join([c.raw for c in configs])
+            content = "\n".join([c.raw for c in all_configs])
             return base64.b64encode(content.encode()).decode()
         else:
-            return "\n".join([c.raw for c in configs])
+            return "\n".join([c.raw for c in all_configs])
     
     def get_stats(self) -> dict:
         """Получение статистики"""

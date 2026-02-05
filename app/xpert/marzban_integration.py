@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.db.crud import add_host, get_or_create_inbound
 from app.db.models import ProxyInbound, ProxyHost
 from app.models.proxy import ProxyHost as ProxyHostModify
-from app.xpert.models import AggregatedConfig
+from app.xpert.models import AggregatedConfig, DirectConfig
 from app.xpert.storage import storage
 from app import db
 
@@ -43,6 +43,20 @@ class MarzbanIntegration:
             sni=config.server,  # SNI = адрес сервера
             host=config.server,  # Host header = адрес сервера
             security="tls",  # Для TLS протоколов
+            alpn="h2,http/1.1",
+            fingerprint="chrome"
+        )
+    
+    def direct_config_to_proxy_host(self, config: DirectConfig) -> ProxyHostModify:
+        """Конвертация прямой конфигурации в ProxyHost для Marzban"""
+        return ProxyHostModify(
+            remark=f"Direct-{config.protocol.upper()}-{config.server[:15]}",
+            address=config.server,
+            port=config.port,
+            path="",
+            sni=config.server,
+            host=config.server,
+            security="tls",
             alpn="h2,http/1.1",
             fingerprint="chrome"
         )
@@ -185,6 +199,99 @@ class MarzbanIntegration:
             
         except Exception as e:
             logger.error(f"Cleanup failed: {e}")
+            return {
+                "status": "error",
+                "error": str(e)
+            }
+    
+    def sync_direct_config_to_marzban(self, config: DirectConfig) -> Dict:
+        """Синхронизация прямой конфигурации с Marzban"""
+        try:
+            if not config.is_active:
+                logger.info(f"Skipping inactive direct config: {config.server}")
+                return {"status": "skipped", "reason": "config_inactive"}
+            
+            # Получаем inbound tag
+            inbound_tag = self.get_inbound_tag_for_config(config)
+            
+            # Получаем или создаем inbound
+            inbound = get_or_create_inbound(self.db_session, inbound_tag)
+            
+            # Проверяем, существует ли уже такой хост
+            current_addresses = {host.address for host in (inbound.hosts or [])}
+            
+            if config.server in current_addresses:
+                logger.info(f"Direct config host already exists: {config.server}")
+                return {"status": "exists", "server": config.server}
+            
+            # Конвертируем в ProxyHost
+            proxy_host = self.direct_config_to_proxy_host(config)
+            
+            # Настраиваем параметры для разных протоколов
+            if config.protocol.lower() == "shadowsocks":
+                # Для Shadowsocks не нужен TLS
+                proxy_host.security = "none"
+                proxy_host.sni = ""
+                proxy_host.alpn = ""
+                proxy_host.fingerprint = ""
+            
+            # Добавляем хост
+            add_host(self.db_session, inbound_tag, proxy_host)
+            
+            logger.info(f"Added direct config to Marzban: {config.protocol}://{config.server}:{config.port}")
+            
+            return {
+                "status": "success",
+                "server": config.server,
+                "port": config.port,
+                "protocol": config.protocol,
+                "inbound_tag": inbound_tag
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to sync direct config to Marzban: {e}")
+            return {
+                "status": "error",
+                "error": str(e)
+            }
+    
+    def sync_all_direct_configs_to_marzban(self) -> Dict:
+        """Синхронизация всех активных прямых конфигураций с Marzban"""
+        try:
+            from app.xpert.direct_config_service import direct_config_service
+            
+            active_configs = direct_config_service.get_active_configs()
+            
+            if not active_configs:
+                logger.info("No active direct configs to sync")
+                return {"status": "no_configs", "count": 0}
+            
+            synced_count = 0
+            errors = []
+            
+            for config in active_configs:
+                try:
+                    result = self.sync_direct_config_to_marzban(config)
+                    if result["status"] == "success":
+                        synced_count += 1
+                    elif result["status"] == "error":
+                        errors.append(f"Failed to sync {config.server}: {result['error']}")
+                except Exception as e:
+                    error_msg = f"Exception syncing {config.server}: {str(e)}"
+                    logger.error(error_msg)
+                    errors.append(error_msg)
+            
+            logger.info(f"Direct configs sync complete: {synced_count}/{len(active_configs)} synced")
+            
+            return {
+                "status": "success",
+                "total_synced": synced_count,
+                "total_configs": len(active_configs),
+                "errors": errors
+            }
+            
+        except Exception as e:
+            logger.error(f"Direct configs sync failed: {e}")
             return {
                 "status": "error",
                 "error": str(e)

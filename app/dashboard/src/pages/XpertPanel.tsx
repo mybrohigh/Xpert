@@ -43,6 +43,7 @@ import {
 import { Header } from "components/Header";
 import { Footer } from "components/Footer";
 import { WhitelistManager } from "components/WhitelistManager";
+import { DirectConfigManager } from "components/DirectConfigManager";
 import { FC, useEffect, useState } from "react";
 import { TrashIcon, ArrowPathIcon, PlusIcon } from "@heroicons/react/24/outline";
 import { fetch } from "../service/http";
@@ -387,6 +388,9 @@ export const XpertPanel: FC = () => {
 
         {/* Whitelists */}
         <WhitelistManager />
+
+        {/* Direct Configurations */}
+        <DirectConfigManager />
 
         {/* Sources */}
         <Card mt="4">

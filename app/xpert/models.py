@@ -84,3 +84,29 @@ class AggregatedConfig:
     @classmethod
     def from_dict(cls, data: dict):
         return cls(**data)
+
+
+@dataclass
+class DirectConfig:
+    """Одиночная конфигурация, добавляемая напрямую в обход белого списка"""
+    id: int = 0
+    raw: str = ""
+    protocol: str = ""
+    server: str = ""
+    port: int = 0
+    remarks: str = ""
+    ping_ms: float = 999.0
+    jitter_ms: float = 0.0
+    packet_loss: float = 0.0
+    is_active: bool = True
+    bypass_whitelist: bool = True  # Всегда обходить белый список
+    auto_sync_to_marzban: bool = True  # Автоматически синхронизировать с Marzban
+    added_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    added_by: str = "admin"  # Кто добавил конфигурацию
+    
+    def to_dict(self):
+        return asdict(self)
+    
+    @classmethod
+    def from_dict(cls, data: dict):
+        return cls(**data)

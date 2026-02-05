@@ -6,6 +6,7 @@ from typing import List, Optional
 from app.xpert.service import xpert_service
 from app.xpert.marzban_integration import marzban_integration
 from app.xpert.ping_stats import ping_stats_service
+from app.xpert.direct_config_service import direct_config_service
 import config
 
 router = APIRouter(prefix="/xpert", tags=["Xpert Panel"])
@@ -43,6 +44,29 @@ class StatsResponse(BaseModel):
     avg_ping: float
     target_ips: List[str]
     domain: str
+
+
+class DirectConfigCreate(BaseModel):
+    raw: str
+    remarks: Optional[str] = None
+    added_by: Optional[str] = "admin"
+
+
+class DirectConfigResponse(BaseModel):
+    id: int
+    raw: str
+    protocol: str
+    server: str
+    port: int
+    remarks: str
+    ping_ms: float
+    jitter_ms: float
+    packet_loss: float
+    is_active: bool
+    bypass_whitelist: bool
+    auto_sync_to_marzban: bool
+    added_at: str
+    added_by: str
 
 
 @router.get("/whitelists")
@@ -496,3 +520,200 @@ async def get_subscription(format: str = "universal"):
     }
     
     return PlainTextResponse(content=content, headers=headers)
+
+
+# Direct Configurations API
+@router.get("/direct-configs")
+async def get_direct_configs():
+    """Получение всех прямых конфигураций"""
+    try:
+        configs = direct_config_service.get_all_configs()
+        return {
+            "configs": [
+                {
+                    "id": c.id,
+                    "raw": c.raw,
+                    "protocol": c.protocol,
+                    "server": c.server,
+                    "port": c.port,
+                    "remarks": c.remarks,
+                    "ping_ms": c.ping_ms,
+                    "jitter_ms": c.jitter_ms,
+                    "packet_loss": c.packet_loss,
+                    "is_active": c.is_active,
+                    "bypass_whitelist": c.bypass_whitelist,
+                    "auto_sync_to_marzban": c.auto_sync_to_marzban,
+                    "added_at": c.added_at,
+                    "added_by": c.added_by
+                }
+                for c in configs
+            ],
+            "total": len(configs)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/direct-configs")
+async def add_direct_config(config_data: DirectConfigCreate):
+    """Добавление одиночной конфигурации в обход белого списка"""
+    try:
+        config = direct_config_service.add_config(
+            raw=config_data.raw,
+            remarks=config_data.remarks,
+            added_by=config_data.added_by
+        )
+        
+        # Автоматическая синхронизация с Marzban если включена
+        if config.auto_sync_to_marzban:
+            try:
+                marzban_integration.sync_direct_config_to_marzban(config)
+            except Exception as e:
+                # Не прерываем операцию, но логируем ошибку
+                import logging
+                logging.warning(f"Failed to sync direct config to Marzban: {e}")
+        
+        return {
+            "id": config.id,
+            "message": "Direct config added successfully",
+            "config": {
+                "id": config.id,
+                "protocol": config.protocol,
+                "server": config.server,
+                "port": config.port,
+                "remarks": config.remarks,
+                "bypass_whitelist": config.bypass_whitelist,
+                "auto_sync_to_marzban": config.auto_sync_to_marzban
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/direct-configs/batch")
+async def add_direct_configs_batch(configs_data: dict):
+    """Массовое добавление конфигураций"""
+    try:
+        raw_configs = configs_data.get('configs', [])
+        added_by = configs_data.get('added_by', 'admin')
+        
+        if not raw_configs:
+            raise HTTPException(status_code=400, detail="No configs provided")
+        
+        results = []
+        errors = []
+        
+        for i, raw_config in enumerate(raw_configs):
+            try:
+                config = direct_config_service.add_config(
+                    raw=raw_config,
+                    remarks=f"Batch config #{i+1}",
+                    added_by=added_by
+                )
+                
+                # Автоматическая синхронизация с Marzban
+                if config.auto_sync_to_marzban:
+                    try:
+                        marzban_integration.sync_direct_config_to_marzban(config)
+                    except Exception as e:
+                        import logging
+                        logging.warning(f"Failed to sync batch config {config.id} to Marzban: {e}")
+                
+                results.append({
+                    "id": config.id,
+                    "server": config.server,
+                    "port": config.port,
+                    "protocol": config.protocol
+                })
+                
+            except Exception as e:
+                errors.append({
+                    "config_index": i,
+                    "error": str(e)
+                })
+        
+        return {
+            "total_provided": len(raw_configs),
+            "successful_added": len(results),
+            "failed": len(errors),
+            "results": results,
+            "errors": errors
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/direct-configs/{config_id}")
+async def delete_direct_config(config_id: int):
+    """Удаление прямой конфигурации"""
+    try:
+        success = direct_config_service.delete_config(config_id)
+        if success:
+            return {"message": "Direct config deleted successfully"}
+        else:
+            raise HTTPException(status_code=404, detail="Direct config not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/direct-configs/{config_id}/toggle")
+async def toggle_direct_config(config_id: int):
+    """Включение/выключение прямой конфигурации"""
+    try:
+        config = direct_config_service.toggle_config(config_id)
+        if config:
+            return {"message": "Direct config toggled successfully", "is_active": config.is_active}
+        else:
+            raise HTTPException(status_code=404, detail="Direct config not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/direct-configs/{config_id}/sync-to-marzban")
+async def sync_direct_config_to_marzban(config_id: int):
+    """Принудительная синхронизация конкретной конфигурации с Marzban"""
+    try:
+        config = direct_config_service.get_config_by_id(config_id)
+        if not config:
+            raise HTTPException(status_code=404, detail="Direct config not found")
+        
+        result = marzban_integration.sync_direct_config_to_marzban(config)
+        return {"message": "Config synced to Marzban successfully", "result": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/direct-configs/validate")
+async def validate_direct_config(config_data: dict):
+    """Валидация конфигурации перед добавлением"""
+    try:
+        raw_config = config_data.get('raw', '')
+        if not raw_config:
+            raise HTTPException(status_code=400, detail="Raw config is required")
+        
+        # Парсинг и валидация конфига
+        from app.xpert.checker import checker
+        result = await checker.process_config(raw_config)
+        
+        if result:
+            return {
+                "valid": True,
+                "protocol": result["protocol"],
+                "server": result["server"],
+                "port": result["port"],
+                "remarks": result["remarks"],
+                "ping_ms": result["ping_ms"],
+                "is_active": result["is_active"]
+            }
+        else:
+            return {
+                "valid": False,
+                "error": "Invalid configuration format"
+            }
+            
+    except Exception as e:
+        return {
+            "valid": False,
+            "error": str(e)
+        }
