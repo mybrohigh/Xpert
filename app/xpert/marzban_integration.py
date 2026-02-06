@@ -29,12 +29,38 @@ class MarzbanIntegration:
         if hasattr(self, 'db_session'):
             self.db_session.close()
     
+    def _pick_existing_inbound_tag(self, protocol_name: str) -> Optional[str]:
+        """Пытаемся выбрать inbound tag, который реально существует в текущем xray.config."""
+        try:
+            from app import xray
+
+            if not getattr(xray, "config", None):
+                return None
+
+            if XRAY_FALLBACKS_INBOUND_TAG and XRAY_FALLBACKS_INBOUND_TAG in xray.config.inbounds_by_tag:
+                return XRAY_FALLBACKS_INBOUND_TAG
+
+            for proxy_type, inbounds in xray.config.inbounds_by_protocol.items():
+                if getattr(proxy_type, "name", "").lower() == protocol_name:
+                    if inbounds:
+                        tag = inbounds[0].get("tag")
+                        if tag:
+                            return tag
+
+            tags = list(xray.config.inbounds_by_tag.keys())
+            return tags[0] if tags else None
+
+        except Exception:
+            return None
+
     def get_inbound_tag_for_config(self, config: AggregatedConfig) -> str:
         """Получение тега inbound для конкретного конфига"""
-        if XRAY_FALLBACKS_INBOUND_TAG:
-            return XRAY_FALLBACKS_INBOUND_TAG
-
         protocol = config.protocol.lower()
+
+        existing = self._pick_existing_inbound_tag(protocol)
+        if existing:
+            return existing
+
         port = config.port
         return f"{protocol}-in-{port}"
     

@@ -693,6 +693,32 @@ async def sync_direct_config_to_marzban(config_id: int, admin: Admin = Depends(A
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/marzban-sync/debug")
+async def marzban_sync_debug(admin: Admin = Depends(Admin.get_current)):
+    try:
+        from app import xray
+
+        inbound_tags = []
+        if getattr(xray, "config", None):
+            inbound_tags = list(xray.config.inbounds_by_tag.keys())
+
+        host_counts = {}
+        try:
+            for tag in inbound_tags:
+                host_counts[tag] = len(xray.hosts.get(tag, []))
+        except Exception:
+            host_counts = {}
+
+        return {
+            "xray_enabled": bool(getattr(xray, "config", None)),
+            "fallback_inbound_tag": config.XRAY_FALLBACKS_INBOUND_TAG,
+            "inbound_tags": inbound_tags,
+            "host_counts": host_counts,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/direct-configs/validate")
 async def validate_direct_config(config_data: dict, admin: Admin = Depends(Admin.get_current)):
     """Валидация конфигурации перед добавлением"""
