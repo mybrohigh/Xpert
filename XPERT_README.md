@@ -17,8 +17,8 @@
 
 ```bash
 # Клонирование
-git clone https://github.com/yunuselektronika-ops/Xpert_Panel.git
-cd Xpert_Panel
+git clone https://github.com/mybrohigh/Xpert-Panel.git
+cd Xpert-Panel
 
 # Настройка переменных окружения
 cp .env.example .env
