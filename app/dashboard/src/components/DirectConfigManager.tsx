@@ -155,9 +155,14 @@ export const DirectConfigManager: FC = () => {
       });
       
       if (!response.ok) {
-        let errorText = 'Unknown error';
+        let errorText = `Server error: ${response.status}`;
         try {
-          errorText = await response.text();
+          // Try different ways to get error message
+          if (typeof response.text === 'function') {
+            errorText = await response.text();
+          } else if (response.statusText) {
+            errorText = response.statusText;
+          }
         } catch (e) {
           console.error('Failed to read error response:', e);
           errorText = `Server error: ${response.status}`;
@@ -267,9 +272,14 @@ export const DirectConfigManager: FC = () => {
       });
 
       if (!response.ok) {
-        let errorText = 'Unknown error';
+        let errorText = `Server error: ${response.status}`;
         try {
-          errorText = await response.text();
+          // Try different ways to get error message
+          if (typeof response.text === 'function') {
+            errorText = await response.text();
+          } else if (response.statusText) {
+            errorText = response.statusText;
+          }
         } catch (e) {
           console.error('Failed to read error response:', e);
           errorText = `Server error: ${response.status}`;
