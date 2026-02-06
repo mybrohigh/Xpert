@@ -524,6 +524,29 @@ async def get_subscription(format: str = "universal"):
     return PlainTextResponse(content=content, headers=headers)
 
 
+@router.get("/direct-configs/sub")
+async def get_direct_configs_subscription(format: str = "universal"):
+    """Подписка только из Direct Configurations (сырой raw без преобразований Marzban)"""
+    try:
+        direct_configs = direct_config_service.get_active_configs()
+        content = "\n".join([c.raw for c in direct_configs])
+
+        if format == "base64":
+            import base64
+            content = base64.b64encode(content.encode()).decode()
+
+        headers = {
+            "Content-Type": "text/plain; charset=utf-8",
+            "Profile-Update-Interval": "1",
+            "Subscription-Userinfo": "upload=0; download=0; total=0; expire=0",
+            "Profile-Title": "Xpert Direct"
+        }
+
+        return PlainTextResponse(content=content, headers=headers)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # Direct Configurations API
 @router.get("/direct-configs")
 async def get_direct_configs():
