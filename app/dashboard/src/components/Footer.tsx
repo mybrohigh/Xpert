@@ -4,7 +4,6 @@ import { useDashboard } from "contexts/DashboardContext";
 import { FC } from "react";
 
 export const Footer: FC<BoxProps> = (props) => {
-  const { version } = useDashboard();
   return (
     <HStack w="full" py="0" position="relative" {...props}>
       <Text
@@ -14,14 +13,7 @@ export const Footer: FC<BoxProps> = (props) => {
         color="gray.500"
         fontSize="xs"
       >
-        <Link color="blue.400" href={REPO_URL}>
-          Marzban
-        </Link>
-        {version ? ` (v${version}), ` : ", "}
-        Made with ❤️ in{" "}
-        <Link color="blue.400" href={ORGANIZATION_URL}>
-          Gozargah
-        </Link>
+        Xpert (v1.0) from Ashgabat
       </Text>
     </HStack>
   );

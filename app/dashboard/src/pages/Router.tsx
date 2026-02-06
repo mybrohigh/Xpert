@@ -1,4 +1,4 @@
-import { createHashRouter } from "react-router-dom";
+import { createHashRouter, redirect } from "react-router-dom";
 import { fetch } from "../service/http";
 import { getAuthToken } from "../utils/authStorage";
 import { Dashboard } from "./Dashboard";
@@ -28,6 +28,14 @@ const fetchAdminLoader = async () => {
     }
 };
 
+const fetchSudoLoader = async () => {
+    const admin = await fetchAdminLoader();
+    if (!admin?.is_sudo) {
+        return redirect("/");
+    }
+    return admin;
+};
+
 export const router = createHashRouter([
     {
         path: "/",
@@ -39,7 +47,7 @@ export const router = createHashRouter([
         path: "/xpert/",
         element: <XpertPanel />,
         errorElement: <Login />,
-        loader: fetchAdminLoader,
+        loader: fetchSudoLoader,
     },
     {
         path: "/login/",

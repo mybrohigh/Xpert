@@ -126,12 +126,22 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
             {t("users")}
           </Text>
         </Link>
-        <Text fontSize="2xl" color="gray.400">|</Text>
-        <Link to="/xpert/">
-          <Text as="h1" fontWeight="semibold" fontSize="2xl" cursor="pointer" _hover={{ color: "primary.500" }}>
-            Xpert Panel
-          </Text>
-        </Link>
+        {isSudo() && (
+          <>
+            <Text fontSize="2xl" color="gray.400">|</Text>
+            <Link to="/xpert/">
+              <Text
+                as="h1"
+                fontWeight="semibold"
+                fontSize="2xl"
+                cursor="pointer"
+                _hover={{ color: "primary.500" }}
+              >
+                Xpert Panel
+              </Text>
+            </Link>
+          </>
+        )}
       </HStack>
       {showDonationNotif && (
         <NotificationCircle top="0" right="0" zIndex={9999} />
@@ -258,23 +268,6 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
               Star
             </GitHubButton>
             */}
-            <Box
-              as="a"
-              href={REPO_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              px="4"
-              py="2"
-              bg="blue.500"
-              color="white"
-              borderRadius="md"
-              fontSize="sm"
-              fontWeight="medium"
-              _hover={{ bg: "blue.600" }}
-              transition="all 0.2s"
-            >
-              ⭐ Star on GitHub
-            </Box>
           </Box>
         </HStack>
       </Box>
