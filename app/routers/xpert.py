@@ -695,7 +695,11 @@ async def validate_direct_config(config_data: dict, admin: Admin = Depends(Admin
         
         # Парсинг и валидация конфига
         from app.xpert.checker import checker
+        import logging
+        logging.info(f"Validating config: {raw_config[:100]}...")
+        
         result = await checker.process_config(raw_config)
+        logging.info(f"Validation result: {result}")
         
         if result:
             return {
@@ -710,10 +714,12 @@ async def validate_direct_config(config_data: dict, admin: Admin = Depends(Admin
         else:
             return {
                 "valid": False,
-                "error": "Invalid configuration format"
+                "error": "Invalid configuration format - could not parse server/port"
             }
             
     except Exception as e:
+        import logging
+        logging.error(f"Validation error: {str(e)}")
         return {
             "valid": False,
             "error": str(e)

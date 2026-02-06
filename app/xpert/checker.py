@@ -30,24 +30,33 @@ class ConfigChecker:
         port = 0
         remarks = ""
         
+        logger.info(f"Parsing config: {raw[:50]}...")
+        
         try:
             if raw.startswith("vless://"):
                 protocol = "vless"
                 server, port, remarks = self._parse_vless(raw)
+                logger.info(f"VLESS parsed: server={server}, port={port}")
             elif raw.startswith("vmess://"):
                 protocol = "vmess"
                 server, port, remarks = self._parse_vmess(raw)
+                logger.info(f"VMESS parsed: server={server}, port={port}")
             elif raw.startswith("trojan://"):
                 protocol = "trojan"
                 server, port, remarks = self._parse_trojan(raw)
+                logger.info(f"TROJAN parsed: server={server}, port={port}")
             elif raw.startswith("ss://"):
                 protocol = "shadowsocks"
                 server, port, remarks = self._parse_shadowsocks(raw)
+                logger.info(f"SS parsed: server={server}, port={port}")
             elif raw.startswith("ssr://"):
                 protocol = "ssr"
                 server, port, remarks = self._parse_ssr(raw)
+                logger.info(f"SSR parsed: server={server}, port={port}")
+            else:
+                logger.warning(f"Unknown protocol: {raw[:20]}...")
         except Exception as e:
-            logger.debug(f"Failed to parse config: {e}")
+            logger.error(f"Failed to parse config: {e}")
         
         return protocol, server, port, remarks
     

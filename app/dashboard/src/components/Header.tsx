@@ -247,6 +247,7 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
               },
             }}
           >
+            {/* Temporarily disabled GitHubButton due to private repo
             <GitHubButton
               href={REPO_URL}
               data-color-scheme={`no-preference: ${gBtnColor}; light: ${gBtnColor}; dark: ${gBtnColor};`}
@@ -256,6 +257,24 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
             >
               Star
             </GitHubButton>
+            */}
+            <Box
+              as="a"
+              href={REPO_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              px="4"
+              py="2"
+              bg="blue.500"
+              color="white"
+              borderRadius="md"
+              fontSize="sm"
+              fontWeight="medium"
+              _hover={{ bg: "blue.600" }}
+              transition="all 0.2s"
+            >
+              ⭐ Star on GitHub
+            </Box>
           </Box>
         </HStack>
       </Box>
