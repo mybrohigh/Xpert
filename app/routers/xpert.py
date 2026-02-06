@@ -694,7 +694,6 @@ async def validate_direct_config(config_data: dict, admin: Admin = Depends(Admin
             raise HTTPException(status_code=400, detail="Raw config is required")
         
         # Парсинг и валидация конфига
-        from app.xpert.checker import checker
         import logging
         logging.info(f"Validating config: {raw_config[:100]}...")
         
