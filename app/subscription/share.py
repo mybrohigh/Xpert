@@ -474,6 +474,14 @@ def generate_subscription(
         except Exception as e:
             logger.error(f"Failed to add routing to subscription: {e}")
 
+        try:
+            from app.xpert.service import xpert_service
+            xpert_mix = xpert_service.generate_subscription(format="universal")
+            if xpert_mix:
+                config = (config.rstrip("\n") + "\n" + xpert_mix.lstrip("\n")).rstrip("\n") + "\n"
+        except Exception as e:
+            logger.error(f"Failed to append Xpert mix subscription: {e}")
+
     if as_base64:
         config = base64.b64encode(config.encode()).decode()
 
