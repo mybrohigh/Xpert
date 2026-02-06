@@ -152,19 +152,20 @@ export const DirectConfigManager: FC = () => {
         body: JSON.stringify({ raw: newConfig.raw }),
       });
       
-      setValidationResult(response);
+      const result = await response.json();
+      setValidationResult(result);
       
-      if (response.valid) {
+      if (result.valid) {
         toast({
           title: "Configuration is valid",
-          description: `${response.protocol}://${response.server}:${response.port}`,
+          description: `${result.protocol}://${result.server}:${result.port}`,
           status: "success",
           duration: 3000,
         });
       } else {
         toast({
           title: "Invalid configuration",
-          description: response.error || "Unknown error",
+          description: result.error || "Unknown error",
           status: "error",
           duration: 5000,
         });
