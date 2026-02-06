@@ -7,7 +7,7 @@ from app.xpert.service import xpert_service
 from app.xpert.marzban_integration import marzban_integration
 from app.xpert.ping_stats import ping_stats_service
 from app.xpert.direct_config_service import direct_config_service
-from app.dependencies import get_current_admin
+from app.models.admin import Admin
 import config
 
 router = APIRouter(prefix="/xpert", tags=["Xpert Panel"])
@@ -686,7 +686,7 @@ async def sync_direct_config_to_marzban(config_id: int):
 
 
 @router.post("/direct-configs/validate")
-async def validate_direct_config(config_data: dict, current_user: dict = Depends(get_current_admin)):
+async def validate_direct_config(config_data: dict, admin: Admin = Depends(Admin.get_current)):
     """Валидация конфигурации перед добавлением"""
     try:
         raw_config = config_data.get('raw', '')
