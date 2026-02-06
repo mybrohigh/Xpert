@@ -155,9 +155,15 @@ export const DirectConfigManager: FC = () => {
       });
       
       if (!response.ok) {
-        const errorText = await response.text();
+        let errorText = 'Unknown error';
+        try {
+          errorText = await response.text();
+        } catch (e) {
+          console.error('Failed to read error response:', e);
+          errorText = `Server error: ${response.status}`;
+        }
         console.error("Validation error:", response.status, errorText);
-        throw new Error(`Server error: ${response.status}`);
+        throw new Error(errorText);
       }
       
       const result = await response.json();
@@ -261,9 +267,15 @@ export const DirectConfigManager: FC = () => {
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
+        let errorText = 'Unknown error';
+        try {
+          errorText = await response.text();
+        } catch (e) {
+          console.error('Failed to read error response:', e);
+          errorText = `Server error: ${response.status}`;
+        }
         console.error("Batch add error:", response.status, errorText);
-        throw new Error(`Server error: ${response.status}`);
+        throw new Error(errorText);
       }
 
       const result = await response.json();
