@@ -603,6 +603,8 @@ async def add_direct_configs_batch(configs_data: dict, admin: Admin = Depends(Ad
         
         results = []
         errors = []
+
+        error_summary = {}
         
         for i, raw_config in enumerate(raw_configs):
             try:
@@ -628,9 +630,13 @@ async def add_direct_configs_batch(configs_data: dict, admin: Admin = Depends(Ad
                 })
                 
             except Exception as e:
+                err_str = str(e)
+                if err_str:
+                    error_summary[err_str] = error_summary.get(err_str, 0) + 1
                 errors.append({
                     "config_index": i,
-                    "error": str(e)
+                    "error": err_str,
+                    "raw_prefix": raw_config[:80]
                 })
         
         return {
@@ -638,7 +644,8 @@ async def add_direct_configs_batch(configs_data: dict, admin: Admin = Depends(Ad
             "successful_added": len(results),
             "failed": len(errors),
             "results": results,
-            "errors": errors
+            "errors": errors,
+            "error_summary": error_summary
         }
         
     except Exception as e:
@@ -697,7 +704,7 @@ async def validate_direct_config(config_data: dict, admin: Admin = Depends(Admin
         import logging
         logging.info(f"Validating config: {raw_config[:100]}...")
         
-        result = await checker.process_config(raw_config)
+        result = checker.process_config(raw_config)
         logging.info(f"Validation result: {result}")
         
         if result:

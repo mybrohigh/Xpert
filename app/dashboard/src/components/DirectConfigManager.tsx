@@ -145,7 +145,7 @@ export const DirectConfigManager: FC = () => {
     try {
       console.log("Validating config:", newConfig.raw);
       
-      const response = await fetch("/api/xpert/direct-configs/validate", {
+      const response = await globalThis.fetch("/api/xpert/direct-configs/validate", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${getAuthToken()}`,
@@ -154,30 +154,27 @@ export const DirectConfigManager: FC = () => {
         body: JSON.stringify({ raw: newConfig.raw }),
       });
       
-      if (!response.ok) {
-        let errorText = 'Server error occurred';
-        try {
-          // Try different ways to get error message
-          if (typeof response.text === 'function') {
-            errorText = await response.text();
-          } else if (response.statusText) {
-            errorText = response.statusText;
-          } else if (response.status) {
-            errorText = `Server error: ${response.status}`;
-          } else if (response.error) {
-            errorText = response.error;
-          } else {
-            errorText = 'Unknown server error';
-          }
-        } catch (e) {
-          console.error('Failed to read error response:', e);
-          errorText = 'Server error occurred';
-        }
-        console.error("Validation error:", response, errorText);
-        throw new Error(errorText);
+      const rawText = await response.text();
+      let result: any = null;
+      try {
+        result = rawText ? JSON.parse(rawText) : null;
+      } catch {
+        result = null;
       }
-      
-      const result = await response.json();
+
+      if (!response.ok) {
+        const message =
+          (result && (result.detail || result.error || result.message)) ||
+          rawText ||
+          `Server error: ${response.status}`;
+        console.error("Validation error:", response.status, message);
+        throw new Error(message);
+      }
+
+      if (!result) {
+        throw new Error("Empty response from server");
+      }
+
       console.log("Validation result:", result);
       setValidationResult(result);
       
@@ -265,7 +262,7 @@ export const DirectConfigManager: FC = () => {
     }
 
     try {
-      const response = await fetch("/api/xpert/direct-configs/batch", {
+      const response = await globalThis.fetch("/api/xpert/direct-configs/batch", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${getAuthToken()}`,
@@ -277,30 +274,27 @@ export const DirectConfigManager: FC = () => {
         }),
       });
 
-      if (!response.ok) {
-        let errorText = 'Server error occurred';
-        try {
-          // Try different ways to get error message
-          if (typeof response.text === 'function') {
-            errorText = await response.text();
-          } else if (response.statusText) {
-            errorText = response.statusText;
-          } else if (response.status) {
-            errorText = `Server error: ${response.status}`;
-          } else if (response.error) {
-            errorText = response.error;
-          } else {
-            errorText = 'Unknown server error';
-          }
-        } catch (e) {
-          console.error('Failed to read error response:', e);
-          errorText = 'Server error occurred';
-        }
-        console.error("Batch add error:", response, errorText);
-        throw new Error(errorText);
+      const rawText = await response.text();
+      let result: any = null;
+      try {
+        result = rawText ? JSON.parse(rawText) : null;
+      } catch {
+        result = null;
       }
 
-      const result = await response.json();
+      if (!response.ok) {
+        const message =
+          (result && (result.detail || result.error || result.message)) ||
+          rawText ||
+          `Server error: ${response.status}`;
+        console.error("Batch add error:", response.status, message);
+        throw new Error(message);
+      }
+
+      if (!result) {
+        throw new Error("Empty response from server");
+      }
+
       console.log("Batch add result:", result);
 
       toast({

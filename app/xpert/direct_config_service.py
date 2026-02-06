@@ -59,16 +59,16 @@ class DirectConfigService:
             with open(self.storage_file, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
                 
-            logger.debug(f"Saved {len(self.configs)} direct configs")
+            logger.info(f"Saved {len(self.configs)} direct configs")
             
         except Exception as e:
             logger.error(f"Failed to save direct configs: {e}")
     
-    async def add_config(self, raw: str, remarks: Optional[str] = None, added_by: str = "admin") -> DirectConfig:
+    def add_config(self, raw: str, remarks: Optional[str] = None, added_by: str = "admin") -> DirectConfig:
         """Добавление новой прямой конфигурации"""
         try:
             # Парсинг и валидация конфига
-            result = await checker.process_config(raw)
+            result = checker.process_config(raw)
             
             if not result:
                 raise ValueError("Invalid configuration format")

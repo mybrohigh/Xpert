@@ -280,7 +280,7 @@ class ConfigChecker:
         
         return configs
     
-    async def process_config(self, raw: str) -> Optional[dict]:
+    def process_config(self, raw: str) -> Optional[dict]:
         """Обработка одной конфигурации - БЕЗ проверки пинга"""
         protocol, server, port, remarks = self.parse_config(raw)
         
