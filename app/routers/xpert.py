@@ -7,6 +7,7 @@ from app.xpert.service import xpert_service
 from app.xpert.marzban_integration import marzban_integration
 from app.xpert.ping_stats import ping_stats_service
 from app.xpert.direct_config_service import direct_config_service
+from app.xpert.checker import checker
 from app.models.admin import Admin
 import config
 

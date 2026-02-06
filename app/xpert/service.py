@@ -69,7 +69,7 @@ class XpertService:
                 
                 source_active = 0
                 for raw in raw_configs:
-                    result = await checker.process_config(raw)
+                    result = checker.process_config(raw)
                     if result:
                         config_obj = AggregatedConfig(
                             id=config_id,

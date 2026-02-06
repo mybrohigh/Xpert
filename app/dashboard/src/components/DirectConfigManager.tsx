@@ -217,7 +217,7 @@ export const DirectConfigManager: FC = () => {
     }
 
     try {
-      await fetch("/api/xpert/direct-configs", {
+      const response = await globalThis.fetch("/api/xpert/direct-configs", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${getAuthToken()}`,
@@ -225,6 +225,22 @@ export const DirectConfigManager: FC = () => {
         },
         body: JSON.stringify(newConfig),
       });
+
+      const rawText = await response.text();
+      let result: any = null;
+      try {
+        result = rawText ? JSON.parse(rawText) : null;
+      } catch {
+        result = null;
+      }
+
+      if (!response.ok) {
+        const message =
+          (result && (result.detail || result.error || result.message)) ||
+          rawText ||
+          `Server error: ${response.status}`;
+        throw new Error(message);
+      }
       
       toast({
         title: "Direct config added",
@@ -237,9 +253,10 @@ export const DirectConfigManager: FC = () => {
       setValidationResult(null);
       singleModal.onClose();
       loadConfigs();
-    } catch (error) {
+    } catch (error: any) {
       toast({
         title: "Error adding config",
+        description: error?.message || "Failed to add configuration",
         status: "error",
         duration: 3000,
       });

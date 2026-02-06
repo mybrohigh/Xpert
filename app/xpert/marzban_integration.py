@@ -7,6 +7,8 @@ import logging
 from typing import List, Dict, Optional
 from sqlalchemy.orm import Session
 
+from config import XRAY_FALLBACKS_INBOUND_TAG
+
 from app.db.crud import add_host, get_or_create_inbound
 from app.db.models import ProxyInbound, ProxyHost
 from app.models.proxy import ProxyHost as ProxyHostModify
@@ -29,6 +31,9 @@ class MarzbanIntegration:
     
     def get_inbound_tag_for_config(self, config: AggregatedConfig) -> str:
         """Получение тега inbound для конкретного конфига"""
+        if XRAY_FALLBACKS_INBOUND_TAG:
+            return XRAY_FALLBACKS_INBOUND_TAG
+
         protocol = config.protocol.lower()
         port = config.port
         return f"{protocol}-in-{port}"
@@ -143,6 +148,13 @@ class MarzbanIntegration:
                     
                     # Добавляем хост
                     add_host(self.db_session, inbound_tag, proxy_host)
+
+                    try:
+                        from app import xray
+                        xray.hosts.clear()
+                    except Exception:
+                        pass
+
                     synced_count += 1
                     logger.info(f"Added {config.protocol} host: {config.server}:{config.port}")
                     
@@ -237,6 +249,12 @@ class MarzbanIntegration:
             
             # Добавляем хост
             add_host(self.db_session, inbound_tag, proxy_host)
+
+            try:
+                from app import xray
+                xray.hosts.clear()
+            except Exception:
+                pass
             
             logger.info(f"Added direct config to Marzban: {config.protocol}://{config.server}:{config.port}")
             
