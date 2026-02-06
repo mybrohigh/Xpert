@@ -143,6 +143,8 @@ export const DirectConfigManager: FC = () => {
 
     setValidating(true);
     try {
+      console.log("Validating config:", newConfig.raw);
+      
       const response = await fetch("/api/xpert/direct-configs/validate", {
         method: "POST",
         headers: {
@@ -152,7 +154,14 @@ export const DirectConfigManager: FC = () => {
         body: JSON.stringify({ raw: newConfig.raw }),
       });
       
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Validation error:", response.status, errorText);
+        throw new Error(`Server error: ${response.status}`);
+      }
+      
       const result = await response.json();
+      console.log("Validation result:", result);
       setValidationResult(result);
       
       if (result.valid) {
@@ -171,11 +180,12 @@ export const DirectConfigManager: FC = () => {
         });
       }
     } catch (error) {
+      console.error("Validation error:", error);
       toast({
         title: "Validation failed",
-        description: "Failed to validate configuration",
+        description: error.message || "Failed to validate configuration",
         status: "error",
-        duration: 3000,
+        duration: 5000,
       });
     } finally {
       setValidating(false);
@@ -250,10 +260,19 @@ export const DirectConfigManager: FC = () => {
         }),
       });
 
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Batch add error:", response.status, errorText);
+        throw new Error(`Server error: ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log("Batch add result:", result);
+
       toast({
         title: "Batch addition complete",
-        description: `${response.successful_added}/${response.total_provided} configs added successfully`,
-        status: response.successful_added > 0 ? "success" : "warning",
+        description: `${result.successful_added}/${result.total_provided} configs added successfully`,
+        status: result.successful_added > 0 ? "success" : "warning",
         duration: 5000,
       });
 
@@ -261,8 +280,10 @@ export const DirectConfigManager: FC = () => {
       batchModal.onClose();
       loadConfigs();
     } catch (error) {
+      console.error("Batch add error:", error);
       toast({
         title: "Error adding batch configs",
+        description: error.message,
         status: "error",
         duration: 3000,
       });
