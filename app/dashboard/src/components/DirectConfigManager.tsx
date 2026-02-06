@@ -179,7 +179,7 @@ export const DirectConfigManager: FC = () => {
           duration: 5000,
         });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Validation error:", error);
       toast({
         title: "Validation failed",
@@ -279,7 +279,7 @@ export const DirectConfigManager: FC = () => {
       setBatchConfigs({ configs: "", added_by: "admin" });
       batchModal.onClose();
       loadConfigs();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Batch add error:", error);
       toast({
         title: "Error adding batch configs",
