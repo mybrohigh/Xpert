@@ -6,6 +6,7 @@ WORKDIR /app/dashboard
 COPY app/dashboard/package*.json ./
 RUN npm ci --legacy-peer-deps
 COPY app/dashboard/ ./
+RUN npm run gen:theme-typings
 RUN npm run build -- --outDir build --assetsDir statics
 
 # Stage 2: Build Python dependencies
