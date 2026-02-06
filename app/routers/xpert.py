@@ -556,7 +556,7 @@ async def get_direct_configs():
 
 
 @router.post("/direct-configs")
-async def add_direct_config(config_data: DirectConfigCreate):
+async def add_direct_config(config_data: DirectConfigCreate, admin: Admin = Depends(Admin.get_current)):
     """Добавление одиночной конфигурации в обход белого списка"""
     try:
         config = direct_config_service.add_config(
@@ -592,7 +592,7 @@ async def add_direct_config(config_data: DirectConfigCreate):
 
 
 @router.post("/direct-configs/batch")
-async def add_direct_configs_batch(configs_data: dict):
+async def add_direct_configs_batch(configs_data: dict, admin: Admin = Depends(Admin.get_current)):
     """Массовое добавление конфигураций"""
     try:
         raw_configs = configs_data.get('configs', [])
@@ -646,7 +646,7 @@ async def add_direct_configs_batch(configs_data: dict):
 
 
 @router.delete("/direct-configs/{config_id}")
-async def delete_direct_config(config_id: int):
+async def delete_direct_config(config_id: int, admin: Admin = Depends(Admin.get_current)):
     """Удаление прямой конфигурации"""
     try:
         success = direct_config_service.delete_config(config_id)
@@ -659,7 +659,7 @@ async def delete_direct_config(config_id: int):
 
 
 @router.put("/direct-configs/{config_id}/toggle")
-async def toggle_direct_config(config_id: int):
+async def toggle_direct_config(config_id: int, admin: Admin = Depends(Admin.get_current)):
     """Включение/выключение прямой конфигурации"""
     try:
         config = direct_config_service.toggle_config(config_id)
@@ -672,7 +672,7 @@ async def toggle_direct_config(config_id: int):
 
 
 @router.post("/direct-configs/{config_id}/sync-to-marzban")
-async def sync_direct_config_to_marzban(config_id: int):
+async def sync_direct_config_to_marzban(config_id: int, admin: Admin = Depends(Admin.get_current)):
     """Принудительная синхронизация конкретной конфигурации с Marzban"""
     try:
         config = direct_config_service.get_config_by_id(config_id)
