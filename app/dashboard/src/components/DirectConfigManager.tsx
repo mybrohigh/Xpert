@@ -155,19 +155,25 @@ export const DirectConfigManager: FC = () => {
       });
       
       if (!response.ok) {
-        let errorText = `Server error: ${response.status}`;
+        let errorText = 'Server error occurred';
         try {
           // Try different ways to get error message
           if (typeof response.text === 'function') {
             errorText = await response.text();
           } else if (response.statusText) {
             errorText = response.statusText;
+          } else if (response.status) {
+            errorText = `Server error: ${response.status}`;
+          } else if (response.error) {
+            errorText = response.error;
+          } else {
+            errorText = 'Unknown server error';
           }
         } catch (e) {
           console.error('Failed to read error response:', e);
-          errorText = `Server error: ${response.status}`;
+          errorText = 'Server error occurred';
         }
-        console.error("Validation error:", response.status, errorText);
+        console.error("Validation error:", response, errorText);
         throw new Error(errorText);
       }
       
@@ -272,19 +278,25 @@ export const DirectConfigManager: FC = () => {
       });
 
       if (!response.ok) {
-        let errorText = `Server error: ${response.status}`;
+        let errorText = 'Server error occurred';
         try {
           // Try different ways to get error message
           if (typeof response.text === 'function') {
             errorText = await response.text();
           } else if (response.statusText) {
             errorText = response.statusText;
+          } else if (response.status) {
+            errorText = `Server error: ${response.status}`;
+          } else if (response.error) {
+            errorText = response.error;
+          } else {
+            errorText = 'Unknown server error';
           }
         } catch (e) {
           console.error('Failed to read error response:', e);
-          errorText = `Server error: ${response.status}`;
+          errorText = 'Server error occurred';
         }
-        console.error("Batch add error:", response.status, errorText);
+        console.error("Batch add error:", response, errorText);
         throw new Error(errorText);
       }
 
