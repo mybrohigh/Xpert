@@ -40,11 +40,12 @@ import {
   TabPanels,
   Tab,
   TabPanel,
+  Flex,
 } from "@chakra-ui/react";
 import { FC, useEffect, useState } from "react";
 import { TrashIcon, PlusIcon, ArrowPathIcon, EyeIcon, EyeSlashIcon } from "@heroicons/react/24/outline";
 import { fetch } from "../service/http";
-import { getAuthToken } from "../utils/auth";
+import { getAuthToken } from "../utils/authStorage";
 
 const AddIcon = PlusIcon;
 const RepeatIcon = ArrowPathIcon;
@@ -339,7 +340,7 @@ export const DirectConfigManager: FC = () => {
   return (
     <Card mt="4">
       <CardHeader>
-        <Flex justify="space-between" align="center">
+        <HStack justify="space-between" align="center">
           <Heading size="md">
             Direct Configurations ({configs.filter(c => c.is_active).length} active)
             <Badge ml={2} colorScheme="green">Bypass Whitelist</Badge>
@@ -360,7 +361,7 @@ export const DirectConfigManager: FC = () => {
               Add Batch
             </Button>
           </HStack>
-        </Flex>
+        </HStack>
       </CardHeader>
       <CardBody>
         <Table variant="simple" size="sm">
