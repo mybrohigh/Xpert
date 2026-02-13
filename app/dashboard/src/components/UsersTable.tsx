@@ -46,6 +46,7 @@ import { User } from "types/User";
 import { formatBytes } from "utils/formatByte";
 import { OnlineBadge } from "./OnlineBadge";
 import { OnlineStatus } from "./OnlineStatus";
+import { SubscriptionStatus } from "./SubscriptionStatus";
 import { Pagination } from "./Pagination";
 import { StatusBadge } from "./StatusBadge";
 
@@ -204,11 +205,13 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 
   useEffect(() => {
     const calcTop = () => {
-      const el = document.querySelectorAll("#filters")[0] as HTMLElement;
+      const el = document.querySelector("#filters") as HTMLElement | null;
+      if (!el) return;
       setTop(`${el.offsetHeight}px`);
     };
+    calcTop();
     window.addEventListener("scroll", calcTop);
-    () => window.removeEventListener("scroll", calcTop);
+    return () => window.removeEventListener("scroll", calcTop);
   }, []);
 
   const isFiltered = users?.length !== total;
@@ -353,7 +356,7 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
                         maxW="calc(100vw - 50px - 32px - 100px - 48px)"
                       >
                         <div className="flex-status">
-                          <OnlineBadge lastOnline={user.online_at} />
+                          <OnlineBadge lastOnline={user.online_at} lastFetch={user.sub_updated_at} firstFetch={user.first_sub_fetch_at} />
                           <Text isTruncated>{user.username}</Text>
                         </div>
                       </Td>
@@ -443,6 +446,7 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
                                     status={user.status}
                                   />
                                   <OnlineStatus lastOnline={user.online_at} />
+                                  <SubscriptionStatus lastFetch={user.sub_updated_at} />
                                 </Box>
                                 <HStack>
                                   <ActionButtons user={user} />
@@ -591,9 +595,10 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
                 >
                   <Td minW="140px">
                     <div className="flex-status">
-                      <OnlineBadge lastOnline={user.online_at} />
+                      <OnlineBadge lastOnline={user.online_at} lastFetch={user.sub_updated_at} firstFetch={user.first_sub_fetch_at} />
                       {user.username}
                       <OnlineStatus lastOnline={user.online_at} />
+                                  <SubscriptionStatus lastFetch={user.sub_updated_at} />
                     </div>
                   </Td>
                   <Td width="400px" minW="150px">

@@ -5,6 +5,14 @@ export const $fetch = ohMyFetch.create({
   baseURL: import.meta.env.VITE_BASE_API,
 });
 
+const redactHeaders = (headers?: Record<string, any>) => {
+  if (!headers) return headers;
+  const copy: Record<string, any> = { ...headers };
+  if (copy.Authorization) copy.Authorization = "REDACTED";
+  if (copy.authorization) copy.authorization = "REDACTED";
+  return copy;
+};
+
 export const fetcher = <T = any>(
   url: string,
   ops: FetchOptions<"json"> = {}
@@ -16,7 +24,17 @@ export const fetcher = <T = any>(
       Authorization: `Bearer ${getAuthToken()}`,
     };
   }
-  return $fetch<T>(url, ops);
+  const method = (ops?.method || "GET").toString().toUpperCase();
+  console.log("[API]", method, url, { ...ops, headers: redactHeaders(ops.headers as any) });
+  return $fetch<T>(url, ops)
+    .then((res) => {
+      console.log("[API OK]", method, url, res);
+      return res;
+    })
+    .catch((err) => {
+      console.error("[API ERR]", method, url, err);
+      throw err;
+    });
 };
 
 export const fetch = fetcher;

@@ -1,6 +1,8 @@
 import asyncio
 import base64
 import logging
+import json
+import os
 from datetime import datetime
 from typing import List, Optional
 
@@ -16,6 +18,58 @@ logger = logging.getLogger(__name__)
 
 class XpertService:
     """Сервис агрегации подписок"""
+
+    def __init__(self):
+        self.runtime_file = "data/xpert_runtime.json"
+        self._load_runtime_settings()
+
+    def _load_runtime_settings(self):
+        """Загружает runtime-настройки Xpert."""
+        try:
+            if not os.path.exists(self.runtime_file):
+                return
+            with open(self.runtime_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            target_ips = data.get("target_ips")
+            if isinstance(target_ips, list):
+                normalized = [str(ip).strip() for ip in target_ips if str(ip).strip()]
+                if normalized:
+                    app_config.XPERT_TARGET_CHECK_IPS = normalized
+                    checker.target_ips = normalized
+        except Exception as e:
+            logger.warning(f"Failed to load runtime settings: {e}")
+
+    def _save_runtime_settings(self):
+        try:
+            os.makedirs(os.path.dirname(self.runtime_file), exist_ok=True)
+            payload = {
+                "target_ips": list(app_config.XPERT_TARGET_CHECK_IPS),
+                "updated_at": datetime.utcnow().isoformat(),
+            }
+            with open(self.runtime_file, "w", encoding="utf-8") as f:
+                json.dump(payload, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.warning(f"Failed to save runtime settings: {e}")
+
+    def get_target_ips(self) -> List[str]:
+        return list(app_config.XPERT_TARGET_CHECK_IPS)
+
+    def set_target_ips(self, target_ips: List[str]) -> List[str]:
+        normalized = []
+        for item in target_ips:
+            val = str(item).strip()
+            if val:
+                normalized.append(val)
+        # remove duplicates preserving order
+        unique = list(dict.fromkeys(normalized))
+        if not unique:
+            raise ValueError("Target IP list cannot be empty")
+        app_config.XPERT_TARGET_CHECK_IPS = unique
+        checker.target_ips = unique
+        if hasattr(checker, "_target_probe_cache"):
+            checker._target_probe_cache = {"ts": 0.0, "ok": False, "avg_ping": 999.0, "success_count": 0}
+        self._save_runtime_settings()
+        return unique
     
     def add_source(self, name: str, url: str, priority: int = 1) -> SubscriptionSource:
         """Добавление источника подписки"""
@@ -143,6 +197,20 @@ class XpertService:
     def get_stats(self) -> dict:
         """Получение статистики"""
         stats = storage.get_stats()
+        direct_configs = direct_config_service.get_all_configs()
+        direct_active = [c for c in direct_configs if c.is_active]
+
+        # Include direct configs in global totals shown by Xpert Panel Statistics.
+        stats["total_direct_configs"] = len(direct_configs)
+        stats["active_direct_configs"] = len(direct_active)
+        stats["total_configs"] = stats.get("total_configs", 0) + len(direct_configs)
+        stats["active_configs"] = stats.get("active_configs", 0) + len(direct_active)
+
+        active_regular = stats.get("active_configs", 0) - len(direct_active)
+        weighted_ping_sum = stats.get("avg_ping", 0) * max(active_regular, 0) + sum(c.ping_ms for c in direct_active)
+        total_active = stats.get("active_configs", 0)
+        stats["avg_ping"] = weighted_ping_sum / total_active if total_active > 0 else 0
+
         stats["target_ips"] = app_config.XPERT_TARGET_CHECK_IPS
         stats["domain"] = app_config.XPERT_DOMAIN
         return stats

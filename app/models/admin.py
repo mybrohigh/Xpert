@@ -24,6 +24,8 @@ class Admin(BaseModel):
     telegram_id: Optional[int] = None
     discord_webhook: Optional[str] = None
     users_usage: Optional[int] = None
+    traffic_limit: Optional[int] = None
+    users_limit: Optional[int] = None
     model_config = ConfigDict(from_attributes=True)
 
     @field_validator("users_usage",  mode='before')
@@ -35,6 +37,18 @@ class Admin(BaseModel):
         if isinstance(v, int):  # Allow integers directly
             return v
         raise ValueError("must be an integer or a float, not a string")  # Reject strings
+
+    @field_validator("traffic_limit", "users_limit", mode="before")
+    def cast_limits(cls, v):
+        if v is None:
+            return v
+        if isinstance(v, float):
+            v = int(v)
+        if isinstance(v, int):
+            if v < 0:
+                raise ValueError("limit must be zero or a positive integer")
+            return v
+        raise ValueError("limit must be an integer or a float, not a string")
 
     @classmethod
     def get_admin(cls, token: str, db: Session):
@@ -93,6 +107,8 @@ class AdminCreate(Admin):
     password: str
     telegram_id: Optional[int] = None
     discord_webhook: Optional[str] = None
+    traffic_limit: Optional[int] = None
+    users_limit: Optional[int] = None
 
     @property
     def hashed_password(self):
@@ -111,6 +127,8 @@ class AdminModify(BaseModel):
     is_sudo: bool
     telegram_id: Optional[int] = None
     discord_webhook: Optional[str] = None
+    traffic_limit: Optional[int] = None
+    users_limit: Optional[int] = None
 
     @property
     def hashed_password(self):

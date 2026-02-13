@@ -17,9 +17,22 @@ from app.models.user import (
     UsersUsagesResponse,
     UserUsagesResponse,
 )
+from app.models.proxy import ProxySettings, ProxyTypes
 from app.utils import report, responses
 
 router = APIRouter(tags=["User"], prefix="/api", responses={401: responses._401})
+
+def _enforce_admin_limits(db: Session, target_admin, add_users: int = 0) -> None:
+    if target_admin is None or target_admin.is_sudo:
+        return
+    if target_admin.users_limit is not None:
+        current_count = crud.get_users_count(db=db, admin=target_admin)
+        if current_count + add_users > target_admin.users_limit:
+            raise HTTPException(status_code=403, detail="Admin user limit reached")
+    if target_admin.traffic_limit is not None and target_admin.users_usage is not None:
+        if target_admin.users_usage >= target_admin.traffic_limit:
+            raise HTTPException(status_code=403, detail="Admin traffic limit reached")
+
 
 
 @router.post("/user", response_model=UserResponse, responses={400: responses._400, 409: responses._409})
@@ -53,6 +66,23 @@ def add_user(
                 status_code=400,
                 detail=f"Protocol {proxy_type} is disabled on your server",
             )
+
+    dbadmin = crud.get_admin(db, admin.username)
+    _enforce_admin_limits(db, dbadmin, add_users=1)
+
+    # Force all active protocols/inbounds for every newly created user.
+    active_protocols = [
+        ProxyTypes(proto)
+        for proto, items in xray.config.inbounds_by_protocol.items()
+        if items
+    ]
+    for proxy_type in active_protocols:
+        if proxy_type not in new_user.proxies:
+            new_user.proxies[proxy_type] = ProxySettings.from_dict(proxy_type, {})
+        if not new_user.inbounds.get(proxy_type):
+            new_user.inbounds[proxy_type] = [
+                inbound["tag"] for inbound in xray.config.inbounds_by_protocol.get(proxy_type, [])
+            ]
 
     try:
         dbuser = crud.create_user(
@@ -107,6 +137,11 @@ def modify_user(
                 status_code=400,
                 detail=f"Protocol {proxy_type} is disabled on your server",
             )
+
+    if modified_user.status in [UserStatus.active, UserStatus.on_hold]:
+        if dbuser.admin and dbuser.admin.username == admin.username:
+            dbadmin = crud.get_admin(db, admin.username)
+            _enforce_admin_limits(db, dbadmin)
 
     old_status = dbuser.status
     dbuser = crud.update_user(db, dbuser, modified_user)
@@ -327,6 +362,11 @@ def set_owner(
     new_admin = crud.get_admin(db, username=admin_username)
     if not new_admin:
         raise HTTPException(status_code=404, detail="Admin not found")
+
+    add_users = 0
+    if not dbuser.admin or dbuser.admin.id != new_admin.id:
+        add_users = 1
+    _enforce_admin_limits(db, new_admin, add_users=add_users)
 
     dbuser = crud.set_owner(db, dbuser, new_admin)
     user = UserResponse.model_validate(dbuser)

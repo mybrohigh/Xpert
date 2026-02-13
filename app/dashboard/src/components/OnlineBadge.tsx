@@ -3,20 +3,27 @@ import { FC } from "react";
 
 type UserStatusProps = {
   lastOnline?: string | null;
+  lastFetch?: string | null;
+  firstFetch?: string | null;
 };
 
-const convertDateFormat = (lastOnline?: string | null): number | null => {
-  if (!lastOnline) return null;
-
-  const date = new Date(`${lastOnline}Z`);
+const toUnixSeconds = (value?: string | null): number | null => {
+  if (!value) return null;
+  const date = new Date(`${value}Z`);
   return Math.floor(date.getTime() / 1000);
 };
 
-export const OnlineBadge: FC<UserStatusProps> = ({ lastOnline }) => {
+export const OnlineBadge: FC<UserStatusProps> = ({
+  lastOnline,
+  lastFetch,
+  firstFetch,
+}) => {
   const currentTimeInSeconds = Math.floor(Date.now() / 1000);
-  const unixTime = convertDateFormat(lastOnline);
+  const onlineUnix = toUnixSeconds(lastOnline);
+  const lastFetchUnix = toUnixSeconds(lastFetch);
+  const firstFetchUnix = toUnixSeconds(firstFetch);
 
-  if (!lastOnline || unixTime === null) {
+  if (!lastOnline && !lastFetch && !firstFetch) {
     return (
       <Box
         border="1px solid"
@@ -27,14 +34,37 @@ export const OnlineBadge: FC<UserStatusProps> = ({ lastOnline }) => {
     );
   }
 
-  const timeDifferenceInSeconds = currentTimeInSeconds - unixTime;
+  if (onlineUnix !== null) {
+    const timeDifferenceInSeconds = currentTimeInSeconds - onlineUnix;
+    if (timeDifferenceInSeconds <= 60) {
+      return (
+        <Box
+          bg="green.300"
+          _dark={{ bg: "green.500" }}
+          className="circle pulse green"
+        />
+      );
+    }
+  }
 
-  if (timeDifferenceInSeconds <= 60) {
+  // First-ever subscription fetch (only once) = blue
+  if (firstFetchUnix !== null && lastFetchUnix !== null && firstFetchUnix === lastFetchUnix) {
     return (
       <Box
-        bg="green.300"
-        _dark={{ bg: "green.500" }}
-        className="circle pulse green"
+        bg="blue.400"
+        _dark={{ bg: "blue.500" }}
+        className="circle"
+      />
+    );
+  }
+
+  // Any subscription fetch = light blue
+  if (lastFetchUnix !== null) {
+    return (
+      <Box
+        bg="cyan.300"
+        _dark={{ bg: "cyan.500" }}
+        className="circle"
       />
     );
   }

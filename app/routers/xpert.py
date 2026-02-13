@@ -1,15 +1,18 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 from typing import List, Optional
+import requests
 
 from app.xpert.service import xpert_service
 from app.xpert.marzban_integration import marzban_integration
 from app.xpert.ping_stats import ping_stats_service
 from app.xpert.direct_config_service import direct_config_service
 from app.xpert.checker import checker
+from app.xpert.hwid_lock_service import set_required_hwid_for_subscription_url
 from app.models.admin import Admin
 import config
+from app import logger
 
 router = APIRouter(prefix="/xpert", tags=["Xpert Panel"])
 
@@ -52,6 +55,30 @@ class DirectConfigCreate(BaseModel):
     raw: str
     remarks: Optional[str] = None
     added_by: Optional[str] = "admin"
+
+
+class DirectConfigUpdate(BaseModel):
+    raw: Optional[str] = None
+    remarks: Optional[str] = None
+    added_by: Optional[str] = None
+
+
+class DirectConfigMove(BaseModel):
+    direction: str
+
+
+class DirectConfigBatchMove(BaseModel):
+    config_ids: List[int]
+    direction: str
+
+
+class TargetIPsUpdate(BaseModel):
+    target_ips: List[str]
+
+
+class CryptoLinkRequest(BaseModel):
+    url: str
+    hwid: Optional[str] = None
 
 
 class DirectConfigResponse(BaseModel):
@@ -253,6 +280,22 @@ async def filter_servers_by_host(data: dict):
 async def get_stats():
     """Получение статистики Xpert Panel"""
     return xpert_service.get_stats()
+
+
+@router.get("/target-ips")
+async def get_target_ips(admin: Admin = Depends(Admin.get_current)):
+    """Получение списка target IPs для проверок."""
+    return {"target_ips": xpert_service.get_target_ips()}
+
+
+@router.put("/target-ips")
+async def update_target_ips(data: TargetIPsUpdate, admin: Admin = Depends(Admin.get_current)):
+    """Обновление списка target IPs для проверок."""
+    try:
+        updated = xpert_service.set_target_ips(data.target_ips)
+        return {"message": "Target IPs updated", "target_ips": updated}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("/sources")
@@ -510,22 +553,45 @@ async def get_queue_configs():
 
 
 @router.get("/sub")
-async def get_subscription(format: str = "universal"):
-    """Получение агрегированной подписки"""
+async def get_subscription(format: str = "universal", user_token: str = None):
+    """Получение агрегированной подписки с отслеживанием трафика"""
     content = xpert_service.generate_subscription(format)
+    
+    # Extract user token from request if not provided
+    if not user_token:
+        from fastapi import Request
+        # This will be available from the request context
+        pass
+    
+    # Get current traffic stats for headers
+    traffic_stats = {}
+    if config.XPERT_TRAFFIC_TRACKING_ENABLED and user_token:
+        try:
+            from app.xpert.traffic_service import traffic_service
+            stats = traffic_service.get_user_traffic_stats(user_token, 30)
+            traffic_stats = {
+                "upload": int(stats.get("total_gb_used", 0) * 1024**3 / 2),  # Rough estimate
+                "download": int(stats.get("total_gb_used", 0) * 1024**3 / 2),
+                "total": int(stats.get("total_gb_used", 0) * 1024**3),
+                "expire": 0
+            }
+        except Exception:
+            pass
     
     headers = {
         "Content-Type": "text/plain; charset=utf-8",
         "Profile-Update-Interval": "1",
-        "Subscription-Userinfo": "upload=0; download=0; total=0; expire=0",
-        "Profile-Title": "Xpert Panel"
+        "Subscription-Userinfo": f"upload={traffic_stats.get('upload', 0)}; download={traffic_stats.get('download', 0)}; total={traffic_stats.get('total', 0)}; expire={traffic_stats.get('expire', 0)}",
+        "Profile-Title": "Xpert Panel",
+        "Traffic-Webhook": f"{config.XPERT_DOMAIN}/api/xpert/traffic-webhook",
+        "User-Token": user_token or "anonymous"
     }
     
     return PlainTextResponse(content=content, headers=headers)
 
 
 @router.get("/direct-configs/sub")
-async def get_direct_configs_subscription(format: str = "universal"):
+async def get_direct_configs_subscription(format: str = "universal", user_token: str = None):
     """Подписка только из Direct Configurations (сырой raw без преобразований Marzban)"""
     try:
         direct_configs = direct_config_service.get_active_configs()
@@ -535,11 +601,28 @@ async def get_direct_configs_subscription(format: str = "universal"):
             import base64
             content = base64.b64encode(content.encode()).decode()
 
+        # Get current traffic stats for headers
+        traffic_stats = {}
+        if config.XPERT_TRAFFIC_TRACKING_ENABLED and user_token:
+            try:
+                from app.xpert.traffic_service import traffic_service
+                stats = traffic_service.get_user_traffic_stats(user_token, 30)
+                traffic_stats = {
+                    "upload": int(stats.get("total_gb_used", 0) * 1024**3 / 2),  # Rough estimate
+                    "download": int(stats.get("total_gb_used", 0) * 1024**3 / 2),
+                    "total": int(stats.get("total_gb_used", 0) * 1024**3),
+                    "expire": 0
+                }
+            except Exception:
+                pass
+
         headers = {
             "Content-Type": "text/plain; charset=utf-8",
             "Profile-Update-Interval": "1",
-            "Subscription-Userinfo": "upload=0; download=0; total=0; expire=0",
-            "Profile-Title": "Xpert Direct"
+            "Subscription-Userinfo": f"upload={traffic_stats.get('upload', 0)}; download={traffic_stats.get('download', 0)}; total={traffic_stats.get('total', 0)}; expire={traffic_stats.get('expire', 0)}",
+            "Profile-Title": "Xpert Direct",
+            "Traffic-Webhook": f"{config.XPERT_DOMAIN}/api/xpert/traffic-webhook",
+            "User-Token": user_token or "anonymous"
         }
 
         return PlainTextResponse(content=content, headers=headers)
@@ -552,6 +635,8 @@ async def get_direct_configs_subscription(format: str = "universal"):
 async def get_direct_configs():
     """Получение всех прямых конфигураций"""
     try:
+        # Обновляем ping/status для direct configs (с throttling в сервисе)
+        direct_config_service.refresh_all_pings()
         configs = direct_config_service.get_all_configs()
         return {
             "configs": [
@@ -575,6 +660,16 @@ async def get_direct_configs():
             ],
             "total": len(configs)
         }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/direct-configs/ping-refresh")
+async def refresh_direct_configs_ping(admin: Admin = Depends(Admin.get_current)):
+    """Ручное обновление ping/status для Direct Configurations."""
+    try:
+        direct_config_service.refresh_all_pings(force=True)
+        return {"message": "Direct configs ping refreshed"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -674,6 +769,65 @@ async def add_direct_configs_batch(configs_data: dict, admin: Admin = Depends(Ad
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/direct-configs/{config_id}")
+async def update_direct_config(config_id: int, config_data: DirectConfigUpdate, admin: Admin = Depends(Admin.get_current)):
+    """Редактирование прямой конфигурации"""
+    try:
+        config = direct_config_service.update_config(
+            config_id=config_id,
+            raw=config_data.raw,
+            remarks=config_data.remarks,
+            added_by=config_data.added_by,
+        )
+        if not config:
+            raise HTTPException(status_code=404, detail="Direct config not found")
+        return {
+            "message": "Direct config updated successfully",
+            "config": {
+                "id": config.id,
+                "raw": config.raw,
+                "protocol": config.protocol,
+                "server": config.server,
+                "port": config.port,
+                "remarks": config.remarks,
+                "ping_ms": config.ping_ms,
+                "jitter_ms": config.jitter_ms,
+                "packet_loss": config.packet_loss,
+                "is_active": config.is_active,
+                "bypass_whitelist": config.bypass_whitelist,
+                "auto_sync_to_marzban": config.auto_sync_to_marzban,
+                "added_at": config.added_at,
+                "added_by": config.added_by,
+            },
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/direct-configs/{config_id}/move")
+async def move_direct_config(config_id: int, data: DirectConfigMove, admin: Admin = Depends(Admin.get_current)):
+    """Перемещение конфигурации вверх/вниз"""
+    try:
+        configs = direct_config_service.move_config(config_id, data.direction)
+        if configs is None:
+            raise HTTPException(status_code=404, detail="Direct config not found")
+        return {"message": "Direct config moved", "total": len(configs)}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/direct-configs/move-batch")
+async def move_direct_configs_batch(data: DirectConfigBatchMove, admin: Admin = Depends(Admin.get_current)):
+    """Массовое перемещение выбранных конфигураций вверх/вниз"""
+    try:
+        if not data.config_ids:
+            raise HTTPException(status_code=400, detail="No config ids provided")
+        configs = direct_config_service.move_configs(data.config_ids, data.direction)
+        return {"message": "Direct configs moved", "total": len(configs)}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.delete("/direct-configs/{config_id}")
@@ -780,3 +934,197 @@ async def validate_direct_config(config_data: dict, admin: Admin = Depends(Admin
             "valid": False,
             "error": str(e)
         }
+
+
+@router.post("/traffic-webhook")
+async def traffic_webhook(request: Request):
+    """Принимает данные о трафике от клиентов или внешних систем"""
+    try:
+        if not config.XPERT_TRAFFIC_TRACKING_ENABLED:
+            raise HTTPException(status_code=503, detail="Traffic tracking is disabled")
+        
+        data = await request.json()
+        
+        user_token = data.get('user_token')
+        server = data.get('server')
+        port = data.get('port')
+        protocol = data.get('protocol')
+        bytes_uploaded = data.get('bytes_uploaded', 0)
+        bytes_downloaded = data.get('bytes_downloaded', 0)
+        
+        if not all([user_token, server, port, protocol]):
+            raise HTTPException(status_code=400, detail="Missing required fields: user_token, server, port, protocol")
+        
+        from app.xpert.traffic_service import traffic_service
+        traffic_service.record_traffic_usage(
+            user_token=user_token,
+            config_server=server,
+            config_port=port,
+            protocol=protocol,
+            bytes_uploaded=bytes_uploaded,
+            bytes_downloaded=bytes_downloaded
+        )
+        
+        logger.info(f"Traffic webhook received: {user_token} -> {server}:{port} "
+                   f"↑{bytes_uploaded} ↓{bytes_downloaded}")
+        
+        return {"status": "success", "message": "Traffic recorded successfully"}
+        
+    except Exception as e:
+        logger.error(f"Traffic webhook error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/traffic-stats/global")
+async def get_global_traffic_stats(days: int = 30):
+    """Глобальная статистика трафика"""
+    try:
+        if not config.XPERT_TRAFFIC_TRACKING_ENABLED:
+            raise HTTPException(status_code=503, detail="Traffic tracking is disabled")
+        
+        from app.xpert.traffic_service import traffic_service
+        stats = traffic_service.get_global_stats(days)
+        return stats
+        
+    except Exception as e:
+        logger.error(f"Failed to get global traffic stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/traffic-stats/server/{server}/{port}")
+async def get_server_traffic_stats(server: str, port: int, days: int = 30):
+    """Статистика по конкретному серверу"""
+    try:
+        if not config.XPERT_TRAFFIC_TRACKING_ENABLED:
+            raise HTTPException(status_code=503, detail="Traffic tracking is disabled")
+        
+        from app.xpert.traffic_service import traffic_service
+        stats = traffic_service.get_server_stats(server, port, days)
+        return stats
+        
+    except Exception as e:
+        logger.error(f"Failed to get server traffic stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/traffic-stats/database/info")
+async def get_database_info():
+    """Информация о базе данных статистики"""
+    try:
+        if not config.XPERT_TRAFFIC_TRACKING_ENABLED:
+            raise HTTPException(status_code=503, detail="Traffic tracking is disabled")
+        
+        from app.xpert.traffic_service import traffic_service
+        info = traffic_service.get_database_info()
+        return info
+        
+    except Exception as e:
+        logger.error(f"Failed to get database info: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/traffic-stats/cleanup")
+async def cleanup_traffic_stats(days: int = None):
+    """Очистка старой статистики"""
+    try:
+        if not config.XPERT_TRAFFIC_TRACKING_ENABLED:
+            raise HTTPException(status_code=503, detail="Traffic tracking is disabled")
+        
+        from app.xpert.traffic_service import traffic_service
+        result = traffic_service.cleanup_old_stats(days)
+        return result
+        
+    except Exception as e:
+        logger.error(f"Failed to cleanup traffic stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/traffic-stats/{user_token}")
+async def get_user_traffic_stats(user_token: str, days: int = 30):
+    """Получить статистику трафика пользователя"""
+    try:
+        if not config.XPERT_TRAFFIC_TRACKING_ENABLED:
+            raise HTTPException(status_code=503, detail="Traffic tracking is disabled")
+        
+        from app.xpert.traffic_service import traffic_service
+        stats = traffic_service.get_user_traffic_stats(user_token, days)
+        return stats
+        
+    except Exception as e:
+        logger.error(f"Failed to get user traffic stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/traffic-stats/global")
+@router.get("/marzban-traffic-stats")
+async def marzban_traffic_stats(days: int = 30):
+    """Статистика для интеграции с Marzban UI"""
+    try:
+        if not config.XPERT_TRAFFIC_TRACKING_ENABLED:
+            return {
+                "users_traffic": {
+                    "total_users": 0,
+                    "total_servers": 0,
+                    "total_gb_used": 0,
+                    "total_connections": 0,
+                    "external_servers": False,
+                    "integration_type": "xpert_panel_disabled"
+                }
+            }
+        
+        from app.xpert.traffic_service import traffic_service
+        global_stats = traffic_service.get_global_stats(days)
+        
+        # Формат ответа совместимый с Marzban
+        return {
+            "users_traffic": {
+                **global_stats,
+                "external_servers": True,  # Флаг что это внешние сервера
+                "integration_type": "xpert_panel",
+                "data_source": "traffic_monitoring_system"
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get marzban traffic stats: {e}")
+        return {
+            "users_traffic": {
+                "total_users": 0,
+                "total_servers": 0,
+                "total_gb_used": 0,
+                "total_connections": 0,
+                "external_servers": False,
+                "integration_type": "xpert_panel_error",
+                "error": str(e)
+            }
+        }
+
+@router.post("/crypto-link")
+async def create_crypto_link(data: CryptoLinkRequest, admin: Admin = Depends(Admin.get_current)):
+    try:
+        payload = {"url": data.url.strip()}
+        if data.hwid and data.hwid.strip():
+            username = set_required_hwid_for_subscription_url(payload["url"], data.hwid)
+            if not username:
+                raise HTTPException(status_code=400, detail="HWID mode requires a valid Marzban /sub URL")
+            payload["hwid"] = data.hwid.strip()
+        resp = requests.post("https://crypto.happ.su/api-v2.php", json=payload, timeout=15)
+        resp.raise_for_status()
+        content_type = resp.headers.get("content-type", "")
+        if "application/json" in content_type:
+            try:
+                j = resp.json()
+                if isinstance(j, str):
+                    return {"link": j}
+                if isinstance(j, dict):
+                    for key in ("url", "link", "result", "data", "encrypted"):
+                        if key in j and isinstance(j[key], str):
+                            return {"link": j[key]}
+                    return j
+            except Exception:
+                pass
+        text = resp.text.strip()
+        return {"link": text}
+    except Exception:
+        logger.exception("crypto-link failed")
+        raise HTTPException(status_code=502, detail="Crypto link generation failed")

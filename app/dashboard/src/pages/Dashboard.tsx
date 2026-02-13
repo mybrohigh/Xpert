@@ -1,5 +1,7 @@
 import { Box, VStack } from "@chakra-ui/react";
+import { AdminLimitsModal } from "components/AdminLimitsModal";
 import { CoreSettingsModal } from "components/CoreSettingsModal";
+import { CryptoLinkModal } from "components/CryptoLinkModal";
 import { DeleteUserModal } from "components/DeleteUserModal";
 import { Filters } from "components/Filters";
 import { Footer } from "components/Footer";
@@ -48,7 +50,9 @@ export const Dashboard: FC = () => {
         <NodesDialog />
         <NodesUsage />
         <ResetAllUsageModal />
+        <AdminLimitsModal />
         <CoreSettingsModal />
+        <CryptoLinkModal />
       </Box>
       <Footer />
     </VStack>

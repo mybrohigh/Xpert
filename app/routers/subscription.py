@@ -1,13 +1,15 @@
 import re
+import base64
 from distutils.version import LooseVersion
 
-from fastapi import APIRouter, Depends, Header, Path, Request, Response
+from fastapi import APIRouter, Depends, Header, HTTPException, Path, Request, Response
 from fastapi.responses import HTMLResponse
 
 from app.db import Session, crud, get_db
 from app.dependencies import get_validated_sub, validate_dates
 from app.models.user import SubscriptionUserResponse, UserResponse
 from app.subscription.share import encode_title, generate_subscription
+from app.xpert.hwid_lock_service import get_required_hwid_for_username, normalize_hwid
 from app.templates import render_template
 from config import (
     SUB_PROFILE_TITLE,
@@ -35,6 +37,15 @@ client_config = {
 router = APIRouter(tags=['Subscription'], prefix=f'/{XRAY_SUBSCRIPTION_PATH}')
 
 
+SUB_ANNOUNCE_TEXT = """Обновляйте подписку перед каждым подключением 🔄
+
+Her bir birikdirmeden öň podpiskany täzeläň 🔄"""
+
+
+def encode_announce(text: str) -> str:
+    return "base64:" + base64.b64encode(text.encode("utf-8")).decode("ascii")
+
+
 def get_subscription_user_info(user: UserResponse) -> dict:
     """Retrieve user subscription information including upload, download, total data, and expiry."""
     return {
@@ -45,16 +56,27 @@ def get_subscription_user_info(user: UserResponse) -> dict:
     }
 
 
+def _enforce_hwid_lock(user: UserResponse, x_hwid: str) -> None:
+    required_hwid = get_required_hwid_for_username(user.username)
+    if not required_hwid:
+        return
+    if normalize_hwid(x_hwid) != required_hwid:
+        raise HTTPException(status_code=404, detail="Not Found")
+
+
 @router.get("/{token}/")
 @router.get("/{token}", include_in_schema=False)
 def user_subscription(
     request: Request,
+    token: str = Path(...),
     db: Session = Depends(get_db),
     dbuser: UserResponse = Depends(get_validated_sub),
-    user_agent: str = Header(default="")
+    user_agent: str = Header(default=""),
+    x_hwid: str = Header(default="", alias="x-hwid"),
 ):
     """Provides a subscription link based on the user agent (Clash, V2Ray, etc.)."""
     user: UserResponse = UserResponse.model_validate(dbuser)
+    _enforce_hwid_lock(user, x_hwid)
 
     accept_header = request.headers.get("Accept", "")
     if "text/html" in accept_header:
@@ -72,6 +94,7 @@ def user_subscription(
         "support-url": SUB_SUPPORT_URL,
         "profile-title": encode_title(SUB_PROFILE_TITLE),
         "profile-update-interval": SUB_UPDATE_INTERVAL,
+        "announce": encode_announce(SUB_ANNOUNCE_TEXT),
         "subscription-userinfo": "; ".join(
             f"{key}={val}"
             for key, val in get_subscription_user_info(user).items()
@@ -165,13 +188,16 @@ def user_get_usage(
 @router.get("/{token}/{client_type}")
 def user_subscription_with_client_type(
     request: Request,
+    token: str = Path(...),
     dbuser: UserResponse = Depends(get_validated_sub),
     client_type: str = Path(..., regex="sing-box|clash-meta|clash|outline|v2ray|v2ray-json"),
     db: Session = Depends(get_db),
-    user_agent: str = Header(default="")
+    user_agent: str = Header(default=""),
+    x_hwid: str = Header(default="", alias="x-hwid"),
 ):
     """Provides a subscription link based on the specified client type (e.g., Clash, V2Ray)."""
     user: UserResponse = UserResponse.model_validate(dbuser)
+    _enforce_hwid_lock(user, x_hwid)
 
     response_headers = {
         "content-disposition": f'attachment; filename="{user.username}"',
@@ -179,6 +205,7 @@ def user_subscription_with_client_type(
         "support-url": SUB_SUPPORT_URL,
         "profile-title": encode_title(SUB_PROFILE_TITLE),
         "profile-update-interval": SUB_UPDATE_INTERVAL,
+        "announce": encode_announce(SUB_ANNOUNCE_TEXT),
         "subscription-userinfo": "; ".join(
             f"{key}={val}"
             for key, val in get_subscription_user_info(user).items()

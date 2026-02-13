@@ -47,6 +47,25 @@ STATUS_TEXTS = {
 }
 
 
+
+def _xpert_allowed_for_user(extra_data: dict) -> bool:
+    user_status = extra_data.get("status")
+    if user_status not in ["active", "on_hold"]:
+        return False
+
+    data_limit = extra_data.get("data_limit")
+    used_traffic = extra_data.get("used_traffic")
+    if data_limit is not None and data_limit > 0 and used_traffic is not None and used_traffic >= data_limit:
+        return False
+
+    expire = extra_data.get("expire")
+    if expire is not None and expire >= 0:
+        now_ts = int(dt.utcnow().timestamp())
+        if expire <= now_ts:
+            return False
+
+    return True
+
 def filter_servers_by_region(configs: list, user_ip: str = None) -> list:
     """Фильтрует сервера по региону пользователя"""
     try:
@@ -475,10 +494,11 @@ def generate_subscription(
             logger.error(f"Failed to add routing to subscription: {e}")
 
         try:
-            from app.xpert.service import xpert_service
-            xpert_mix = xpert_service.generate_subscription(format="universal")
-            if xpert_mix:
-                config = (config.rstrip("\n") + "\n" + xpert_mix.lstrip("\n")).rstrip("\n") + "\n"
+            if _xpert_allowed_for_user(kwargs["extra_data"]):
+                from app.xpert.service import xpert_service
+                xpert_mix = xpert_service.generate_subscription(format="universal")
+                if xpert_mix:
+                    config = (config.rstrip("\n") + "\n" + xpert_mix.lstrip("\n")).rstrip("\n") + "\n"
         except Exception as e:
             logger.error(f"Failed to append Xpert mix subscription: {e}")
 

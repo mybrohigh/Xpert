@@ -174,8 +174,21 @@ def reset_admin_usage(
     db: Session = Depends(get_db),
     current_admin: Admin = Depends(Admin.check_sudo_admin)
 ):
-    """Resets usage of admin."""
-    return crud.reset_admin_usage(db, dbadmin)
+    """Resets usage of admin including external traffic."""
+    # Сброс стандартного трафика Marzban
+    result = crud.reset_admin_usage(db, dbadmin)
+    
+    # Сброс внешнего трафика через Xpert Panel
+    try:
+        from config import XPERT_TRAFFIC_TRACKING_ENABLED
+        if XPERT_TRAFFIC_TRACKING_ENABLED:
+            from app.xpert.traffic_service import traffic_service
+            external_result = traffic_service.reset_admin_external_traffic(dbadmin.username)
+            logger.info(f"External traffic reset for {dbadmin.username}: {external_result}")
+    except Exception as e:
+        logger.error(f"Failed to reset external traffic: {e}")
+    
+    return result
 
 
 @router.get(
@@ -185,7 +198,145 @@ def reset_admin_usage(
 )
 def get_admin_usage(
     dbadmin: Admin = Depends(get_admin_by_username),
+    db: Session = Depends(get_db),
     current_admin: Admin = Depends(Admin.check_sudo_admin)
 ):
-    """Retrieve the usage of given admin."""
-    return dbadmin.users_usage
+    """Retrieve the usage of given admin including external traffic."""
+    # Базовое использование Marzban
+    marzban_usage = dbadmin.users_usage
+    
+    # Внешний трафик через Xpert Panel
+    external_usage = 0
+    try:
+        from config import XPERT_TRAFFIC_TRACKING_ENABLED
+        if XPERT_TRAFFIC_TRACKING_ENABLED:
+            from app.xpert.traffic_service import traffic_service
+            external_stats = traffic_service.get_admin_traffic_usage(dbadmin.username)
+            # Конвертируем ГБ в байты (стандарт Marzban)
+            external_usage = int(external_stats.get("external_traffic_gb", 0) * 1024**3)
+            logger.info(f"External traffic for {dbadmin.username}: {external_stats}")
+    except Exception as e:
+        logger.error(f"Failed to get external traffic: {e}")
+    
+    # Общее использование = Marzban + внешний трафик
+    total_usage = marzban_usage + external_usage
+    
+    return total_usage
+
+
+@router.get(
+    "/admin/usage/{username}/detailed",
+    responses={403: responses._403},
+)
+def get_admin_usage_detailed(
+    dbadmin: Admin = Depends(get_admin_by_username),
+    db: Session = Depends(get_db),
+    current_admin: Admin = Depends(Admin.check_sudo_admin)
+):
+    """Retrieve detailed usage including external traffic breakdown."""
+    # Базовое использование Marzban
+    marzban_usage = dbadmin.users_usage
+    
+    # Внешний трафик через Xpert Panel
+    external_stats = {}
+    try:
+        from config import XPERT_TRAFFIC_TRACKING_ENABLED
+        if XPERT_TRAFFIC_TRACKING_ENABLED:
+            from app.xpert.traffic_service import traffic_service
+            external_stats = traffic_service.get_admin_traffic_usage(dbadmin.username)
+            
+            # Проверка лимита трафика
+            limit_check = {}
+            if dbadmin.traffic_limit:
+                limit_check = traffic_service.check_admin_traffic_limit(
+                    dbadmin.username, dbadmin.traffic_limit
+                )
+    except Exception as e:
+        logger.error(f"Failed to get external traffic: {e}")
+    
+    return {
+        "username": dbadmin.username,
+        "marzban_usage_bytes": marzban_usage,
+        "marzban_usage_gb": round(marzban_usage / (1024**3), 3) if marzban_usage else 0,
+        "external_traffic": external_stats,
+        "total_usage_bytes": marzban_usage + int(external_stats.get("external_traffic_gb", 0) * 1024**3),
+        "traffic_limit_bytes": dbadmin.traffic_limit,
+        "traffic_limit_gb": round(dbadmin.traffic_limit / (1024**3), 3) if dbadmin.traffic_limit else None,
+        "limit_check": limit_check.get("within_limit", True) if limit_check else None,
+        "percentage_used": limit_check.get("percentage_used", 0) if limit_check else None
+    }
+
+
+@router.post(
+    "/admin/external-traffic/reset/{username}",
+    response_model=dict,
+    responses={403: responses._403},
+)
+def reset_external_traffic_only(
+    dbadmin: Admin = Depends(get_admin_by_username),
+    db: Session = Depends(get_db),
+    current_admin: Admin = Depends(Admin.check_sudo_admin)
+):
+    """Reset only external traffic (Xpert Panel) for admin."""
+    try:
+        from config import XPERT_TRAFFIC_TRACKING_ENABLED
+        if not XPERT_TRAFFIC_TRACKING_ENABLED:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="External traffic tracking is disabled"
+            )
+        
+        from app.xpert.traffic_service import traffic_service
+        result = traffic_service.reset_admin_external_traffic(dbadmin.username)
+        logger.info(f"External traffic reset for {dbadmin.username}: {result}")
+        return result
+    except Exception as e:
+        logger.error(f"Failed to reset external traffic: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+
+@router.get(
+    "/admin/external-traffic/stats/{username}",
+    response_model=dict,
+    responses={403: responses._403},
+)
+def get_external_traffic_stats(
+    dbadmin: Admin = Depends(get_admin_by_username),
+    db: Session = Depends(get_db),
+    current_admin: Admin = Depends(Admin.check_sudo_admin),
+    days: int = 30
+):
+    """Get external traffic statistics for admin."""
+    try:
+        from config import XPERT_TRAFFIC_TRACKING_ENABLED
+        if not XPERT_TRAFFIC_TRACKING_ENABLED:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="External traffic tracking is disabled"
+            )
+        
+        from app.xpert.traffic_service import traffic_service
+        stats = traffic_service.get_admin_traffic_usage(dbadmin.username, days)
+        
+        # Проверка лимита
+        limit_check = None
+        if dbadmin.traffic_limit:
+            limit_check = traffic_service.check_admin_traffic_limit(
+                dbadmin.username, dbadmin.traffic_limit
+            )
+        
+        return {
+            **stats,
+            "traffic_limit_bytes": dbadmin.traffic_limit,
+            "traffic_limit_gb": round(dbadmin.traffic_limit / (1024**3), 3) if dbadmin.traffic_limit else None,
+            "limit_check": limit_check
+        }
+    except Exception as e:
+        logger.error(f"Failed to get external traffic stats: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )

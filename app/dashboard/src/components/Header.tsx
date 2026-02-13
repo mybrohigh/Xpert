@@ -11,6 +11,7 @@ import {
   useColorMode,
 } from "@chakra-ui/react";
 import {
+  AdjustmentsHorizontalIcon,
   ArrowLeftOnRectangleIcon,
   Bars3Icon,
   ChartPieIcon,
@@ -21,6 +22,8 @@ import {
   MoonIcon,
   SquaresPlusIcon,
   SunIcon,
+  ChartBarIcon,
+  LockClosedIcon,
 } from "@heroicons/react/24/outline";
 import { DONATION_URL, REPO_URL } from "constants/Project";
 import { useDashboard } from "contexts/DashboardContext";
@@ -47,6 +50,8 @@ const iconProps = {
 const DarkIcon = chakra(MoonIcon, iconProps);
 const LightIcon = chakra(SunIcon, iconProps);
 const CoreSettingsIcon = chakra(Cog6ToothIcon, iconProps);
+const TrafficManagerIcon = chakra(ChartBarIcon, iconProps);
+const CryptoLinkIcon = chakra(LockClosedIcon, iconProps);
 const SettingsIcon = chakra(Bars3Icon, iconProps);
 const LogoutIcon = chakra(ArrowLeftOnRectangleIcon, iconProps);
 const DonationIcon = chakra(CurrencyDollarIcon, iconProps);
@@ -54,6 +59,7 @@ const HostsIcon = chakra(LinkIcon, iconProps);
 const NodesIcon = chakra(SquaresPlusIcon, iconProps);
 const NodesUsageIcon = chakra(ChartPieIcon, iconProps);
 const ResetUsageIcon = chakra(DocumentMinusIcon, iconProps);
+const AdminLimitsIcon = chakra(AdjustmentsHorizontalIcon, iconProps);
 const NotificationCircle = chakra(Box, {
   baseStyle: {
     bg: "yellow.500",
@@ -96,6 +102,8 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
     onResetAllUsage,
     onEditingNodes,
     onShowingNodesUsage,
+    onEditingAdminLimits,
+    onEditingCrypto,
   } = useDashboard();
   const { t } = useTranslation();
   const { colorMode, toggleColorMode } = useColorMode();
@@ -195,8 +203,34 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
                   >
                     {t("resetAllUsage")}
                   </MenuItem>
+                  <MenuItem
+                    maxW="170px"
+                    fontSize="sm"
+                    icon={<AdminLimitsIcon />}
+                    onClick={onEditingAdminLimits.bind(null, true)}
+                  >
+                    {t("adminLimits.menu")}
+                  </MenuItem>
+                  <Link to="/traffic/">
+                    <MenuItem
+                      maxW="170px"
+                      fontSize="sm"
+                      icon={<TrafficManagerIcon />}
+                      onClick={handleOnClose}
+                    >
+                      {t("traffic.menu")}
+                    </MenuItem>
+                  </Link>
                 </>
               )}
+              <MenuItem
+                maxW="170px"
+                fontSize="sm"
+                icon={<CryptoLinkIcon />}
+                onClick={onEditingCrypto.bind(null, true)}
+              >
+                {t("cryptoLink.menu")}
+              </MenuItem>
               <Link to={DONATION_URL} target="_blank">
                 <MenuItem
                   maxW="170px"

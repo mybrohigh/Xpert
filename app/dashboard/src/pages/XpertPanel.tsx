@@ -121,8 +121,10 @@ export const XpertPanel: FC = () => {
     priority: 1,
   });
   const [testingUrl, setTestingUrl] = useState(false);
+  const [targetIpsInput, setTargetIpsInput] = useState("");
   const toast = useToast();
   const { isOpen, onOpen, onClose } = useDisclosure();
+  const targetIpsModal = useDisclosure();
 
   const loadData = async () => {
     setLoading(true);
@@ -332,6 +334,45 @@ export const XpertPanel: FC = () => {
     }
   };
 
+  const openTargetIpsModal = () => {
+    setTargetIpsInput((stats?.target_ips || []).join(", "));
+    targetIpsModal.onOpen();
+  };
+
+  const handleSaveTargetIps = async () => {
+    try {
+      const target_ips = targetIpsInput
+        .split(/[,\n]/)
+        .map((x) => x.trim())
+        .filter((x) => x.length > 0);
+      if (target_ips.length === 0) {
+        throw new Error("Target IP list cannot be empty");
+      }
+      await fetch("/api/xpert/target-ips", {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${getAuthToken()}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ target_ips }),
+      });
+      toast({
+        title: "Target IPs updated",
+        status: "success",
+        duration: 3000,
+      });
+      targetIpsModal.onClose();
+      await loadData();
+    } catch (error: any) {
+      toast({
+        title: "Error updating Target IPs",
+        description: error?.message || "Failed to update Target IPs",
+        status: "error",
+        duration: 4000,
+      });
+    }
+  };
+
   if (loading) {
     return (
       <VStack justifyContent="center" minH="100vh">
@@ -375,9 +416,14 @@ export const XpertPanel: FC = () => {
                 </Stat>
               </Flex>
               <Box mt={4}>
-                <Text fontSize="sm" color="gray.500">
-                  Target IPs: {stats.target_ips.join(", ")}
-                </Text>
+                <HStack spacing={3} align="center" mb={1}>
+                  <Text fontSize="sm" color="gray.500">
+                    Target IPs: {stats.target_ips.join(", ")}
+                  </Text>
+                  <Button size="xs" variant="outline" onClick={openTargetIpsModal}>
+                    Edit
+                  </Button>
+                </HStack>
                 <Text fontSize="sm" color="gray.500">
                   Domain: {stats.domain}
                 </Text>
@@ -581,6 +627,33 @@ export const XpertPanel: FC = () => {
               isLoading={loading}
             >
               Add Source
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      <Modal isOpen={targetIpsModal.isOpen} onClose={targetIpsModal.onClose} size="lg">
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>Edit Target IPs</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            <FormControl>
+              <FormLabel>Target IPs (comma or new line)</FormLabel>
+              <Textarea
+                value={targetIpsInput}
+                onChange={(e) => setTargetIpsInput(e.target.value)}
+                rows={6}
+                placeholder="93.171.220.198, 185.69.186.175"
+              />
+            </FormControl>
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="ghost" onClick={targetIpsModal.onClose}>
+              Cancel
+            </Button>
+            <Button colorScheme="blue" onClick={handleSaveTargetIps}>
+              Save
             </Button>
           </ModalFooter>
         </ModalContent>

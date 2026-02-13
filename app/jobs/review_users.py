@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app import logger, scheduler, xray
 from app.db import (GetDB, get_notification_reminder, get_users,
                     start_user_expire, update_user_status, reset_user_by_next)
+from app.db.models import Admin as AdminModel
 from app.models.user import ReminderType, UserResponse, UserStatus
 from app.utils import report
 from app.utils.helpers import (calculate_expiration_days,
@@ -117,6 +118,26 @@ def review():
 
             logger.info(f"User \"{user.username}\" status changed to {status}")
 
+
+        # Enforce admin traffic limits by disabling users when exceeded
+        admins = db.query(AdminModel).filter(AdminModel.traffic_limit.isnot(None), AdminModel.is_sudo == False).all()
+        for admin in admins:
+            if admin.users_usage is None or admin.traffic_limit is None:
+                continue
+            if admin.users_usage < admin.traffic_limit:
+                continue
+            for user in get_users(db, status=UserStatus.active, admin=admin):
+                xray.operations.remove_user(user)
+                update_user_status(db, user, UserStatus.limited)
+                report.status_change(username=user.username, status=UserStatus.limited,
+                                     user=UserResponse.model_validate(user), user_admin=user.admin)
+                logger.info(f"User \"{user.username}\" limited due to admin traffic limit")
+            for user in get_users(db, status=UserStatus.on_hold, admin=admin):
+                xray.operations.remove_user(user)
+                update_user_status(db, user, UserStatus.limited)
+                report.status_change(username=user.username, status=UserStatus.limited,
+                                     user=UserResponse.model_validate(user), user_admin=user.admin)
+                logger.info(f"User \"{user.username}\" limited due to admin traffic limit")
 
 scheduler.add_job(review, 'interval',
                   seconds=JOB_REVIEW_USERS_INTERVAL,

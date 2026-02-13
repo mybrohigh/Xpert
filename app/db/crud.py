@@ -639,6 +639,8 @@ def update_user_sub(db: Session, dbuser: User, user_agent: str) -> User:
         User: The updated user object.
     """
     dbuser.sub_updated_at = datetime.utcnow()
+    if dbuser.first_sub_fetch_at is None:
+        dbuser.first_sub_fetch_at = dbuser.sub_updated_at
     dbuser.sub_last_user_agent = user_agent
 
     db.commit()
@@ -931,7 +933,9 @@ def create_admin(db: Session, admin: AdminCreate) -> Admin:
         hashed_password=admin.hashed_password,
         is_sudo=admin.is_sudo,
         telegram_id=admin.telegram_id if admin.telegram_id else None,
-        discord_webhook=admin.discord_webhook if admin.discord_webhook else None
+        discord_webhook=admin.discord_webhook if admin.discord_webhook else None,
+        traffic_limit=admin.traffic_limit if admin.traffic_limit is not None else None,
+        users_limit=admin.users_limit if admin.users_limit is not None else None
     )
     db.add(dbadmin)
     db.commit()
@@ -960,6 +964,10 @@ def update_admin(db: Session, dbadmin: Admin, modified_admin: AdminModify) -> Ad
         dbadmin.telegram_id = modified_admin.telegram_id
     if modified_admin.discord_webhook:
         dbadmin.discord_webhook = modified_admin.discord_webhook
+    if modified_admin.traffic_limit is not None:
+        dbadmin.traffic_limit = modified_admin.traffic_limit
+    if modified_admin.users_limit is not None:
+        dbadmin.users_limit = modified_admin.users_limit
 
     db.commit()
     db.refresh(dbadmin)
@@ -987,6 +995,10 @@ def partial_update_admin(db: Session, dbadmin: Admin, modified_admin: AdminParti
         dbadmin.telegram_id = modified_admin.telegram_id
     if modified_admin.discord_webhook is not None:
         dbadmin.discord_webhook = modified_admin.discord_webhook
+    if modified_admin.traffic_limit is not None:
+        dbadmin.traffic_limit = modified_admin.traffic_limit
+    if modified_admin.users_limit is not None:
+        dbadmin.users_limit = modified_admin.users_limit
 
     db.commit()
     db.refresh(dbadmin)

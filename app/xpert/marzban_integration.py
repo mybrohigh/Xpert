@@ -169,8 +169,8 @@ class MarzbanIntegration:
                         # Для Shadowsocks не нужен TLS
                         proxy_host.security = "none"
                         proxy_host.sni = ""
-                        proxy_host.alpn = ""
-                        proxy_host.fingerprint = ""
+                        proxy_host.alpn = "none"
+                        proxy_host.fingerprint = "none"
                     
                     # Добавляем хост
                     add_host(self.db_session, inbound_tag, proxy_host)
@@ -245,6 +245,15 @@ class MarzbanIntegration:
     def sync_direct_config_to_marzban(self, config: DirectConfig) -> Dict:
         """Синхронизация прямой конфигурации с Marzban"""
         try:
+            # Direct configs should NOT be converted into Marzban hosts.
+            return {
+                "status": "disabled",
+                "reason": "direct_configs_not_synced",
+                "server": config.server,
+                "port": config.port,
+                "protocol": config.protocol,
+            }
+
             if not config.is_active:
                 logger.info(f"Skipping inactive direct config: {config.server}")
                 return {"status": "skipped", "reason": "config_inactive"}
@@ -270,8 +279,8 @@ class MarzbanIntegration:
                 # Для Shadowsocks не нужен TLS
                 proxy_host.security = "none"
                 proxy_host.sni = ""
-                proxy_host.alpn = ""
-                proxy_host.fingerprint = ""
+                proxy_host.alpn = "none"
+                proxy_host.fingerprint = "none"
             
             # Добавляем хост
             add_host(self.db_session, inbound_tag, proxy_host)

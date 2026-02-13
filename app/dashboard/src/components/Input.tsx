@@ -98,7 +98,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
             type,
             placeholder,
             onChange: (v: any) => {
-              if (onChange) onChange(v);
+              if (onChange) onChange({ target: { value: v, name } });
             },
             onBlur,
             value,
@@ -132,9 +132,9 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
               className={classNames(className)}
               type={type}
               placeholder={placeholder}
-              onChange={onChange}
-              onBlur={onBlur}
-              value={value}
+              onChange={type == "number" ? undefined : onChange}
+              onBlur={type == "number" ? undefined : onBlur}
+              value={type == "number" ? undefined : value}
               onClick={onClick}
               disabled={disabled}
               flexGrow={1}

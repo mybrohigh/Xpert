@@ -52,6 +52,8 @@ type DashboardStateType = {
   isEditingNodes: boolean;
   isShowingNodesUsage: boolean;
   isResetingAllUsage: boolean;
+  isEditingAdminLimits: boolean;
+  isEditingCrypto: boolean;
   resetUsageUser: User | null;
   revokeSubscriptionUser: User | null;
   isEditingCore: boolean;
@@ -71,6 +73,8 @@ type DashboardStateType = {
   onEditingHosts: (isEditingHosts: boolean) => void;
   onEditingNodes: (isEditingHosts: boolean) => void;
   onShowingNodesUsage: (isShowingNodesUsage: boolean) => void;
+  onEditingAdminLimits: (isEditingAdminLimits: boolean) => void;
+  onEditingCrypto: (isEditingCrypto: boolean) => void;
   resetDataUsage: (user: User) => Promise<void>;
   revokeSubscription: (user: User) => Promise<void>;
 };
@@ -124,6 +128,8 @@ export const useDashboard = create(
     isEditingHosts: false,
     isEditingNodes: false,
     isShowingNodesUsage: false,
+    isEditingAdminLimits: false,
+    isEditingCrypto: false,
     resetUsageUser: null,
     revokeSubscriptionUser: null,
     filters: {
@@ -204,6 +210,12 @@ export const useDashboard = create(
     },
     onShowingNodesUsage: (isShowingNodesUsage: boolean) => {
       set({ isShowingNodesUsage });
+    },
+    onEditingAdminLimits: (isEditingAdminLimits: boolean) => {
+      set({ isEditingAdminLimits });
+    },
+    onEditingCrypto: (isEditingCrypto: boolean) => {
+      set({ isEditingCrypto });
     },
     setSubLink: (subscribeUrl) => {
       set({ subscribeUrl });

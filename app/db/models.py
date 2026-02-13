@@ -45,6 +45,8 @@ class Admin(Base):
     telegram_id = Column(BigInteger, nullable=True, default=None)
     discord_webhook = Column(String(1024), nullable=True, default=None)
     users_usage = Column(BigInteger, nullable=False, default=0)
+    traffic_limit = Column(BigInteger, nullable=True, default=None)
+    users_limit = Column(Integer, nullable=True, default=None)
     usage_logs = relationship("AdminUsageLogs", back_populates="admin")
 
 
@@ -80,6 +82,7 @@ class User(Base):
     admin = relationship("Admin", back_populates="users")
     sub_revoked_at = Column(DateTime, nullable=True, default=None)
     sub_updated_at = Column(DateTime, nullable=True, default=None)
+    first_sub_fetch_at = Column(DateTime, nullable=True, default=None)
     sub_last_user_agent = Column(String(512), nullable=True, default=None)
     created_at = Column(DateTime, default=datetime.utcnow)
     note = Column(String(500), nullable=True, default=None)

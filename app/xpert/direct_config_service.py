@@ -6,7 +6,12 @@
 import logging
 import json
 import os
+import base64
+import random
+import re
+import time
 from typing import List, Optional, Dict
+from urllib.parse import quote, urlparse, urlunparse
 from datetime import datetime
 
 from app.xpert.models import DirectConfig
@@ -22,7 +27,10 @@ class DirectConfigService:
         self.storage_file = "data/direct_configs.json"
         self.configs: List[DirectConfig] = []
         self.next_id = 1
+        self._last_ping_refresh_ts = 0.0
+        self._ping_refresh_interval_sec = 120
         self._load_configs()
+        self._apply_auto_names(save=True)
     
     def _load_configs(self):
         """Загрузка конфигураций из файла"""
@@ -64,6 +72,84 @@ class DirectConfigService:
         except Exception as e:
             logger.error(f"Failed to save direct configs: {e}")
     
+    _flag_codes = [
+        "AE", "AZ", "BY", "BE", "BR", "CA", "CH", "CN", "CZ", "DE",
+        "ES", "FI", "FR", "GB", "GE", "HK", "IN", "IR", "IT", "JP",
+        "KR", "KZ", "NL", "NO", "PL", "RU", "SE", "SG", "TM", "TR",
+        "UA", "US", "UZ",
+    ]
+
+    def _flag_from_code(self, code: str) -> str:
+        code = code.upper()
+        if len(code) != 2:
+            return ""
+        return chr(0x1F1E6 + (ord(code[0]) - ord("A"))) + chr(0x1F1E6 + (ord(code[1]) - ord("A")))
+
+
+
+    def _format_auto_name(self, index: int, flag: str) -> str:
+        return f"{flag} SR-{index:03d}"
+
+    def _extract_flag(self, text: str) -> Optional[str]:
+        if not text:
+            return None
+        match = re.search(r'[\U0001F1E6-\U0001F1FF]{2}', text)
+        return match.group(0) if match else None
+
+    def _get_existing_flag(self, config: DirectConfig) -> Optional[str]:
+        flag = self._extract_flag(config.remarks or "")
+        if flag:
+            return flag
+        try:
+            _, _, _, remarks = checker.parse_config(config.raw)
+            flag = self._extract_flag(remarks)
+            if flag:
+                return flag
+        except Exception:
+            pass
+        return None
+
+    def _update_raw_name(self, raw: str, protocol: str, name: str) -> str:
+        try:
+            if protocol == "vmess":
+                import json as _json
+                encoded = raw.replace("vmess://", "")
+                padding = 4 - len(encoded) % 4
+                if padding != 4:
+                    encoded += "=" * padding
+                decoded = base64.b64decode(encoded).decode("utf-8")
+                data = _json.loads(decoded)
+                data["ps"] = name
+                new_encoded = base64.b64encode(_json.dumps(data, separators=(",", ":")).encode()).decode()
+                new_encoded = new_encoded.rstrip("=")
+                return "vmess://" + new_encoded
+
+            parsed = urlparse(raw)
+            if not parsed.scheme:
+                return raw
+            new_fragment = quote(name, safe="")
+            return urlunparse(parsed._replace(fragment=new_fragment))
+        except Exception:
+            return raw
+
+    def _apply_auto_names(self, save: bool = True):
+        changed = False
+        for idx, config in enumerate(self.configs, start=1):
+            flag = self._get_existing_flag(config)
+            if not flag:
+                flag = self._flag_from_code(random.choice(self._flag_codes))
+            name = self._format_auto_name(idx, flag)
+            if config.remarks != name:
+                config.remarks = name
+                changed = True
+            new_raw = self._update_raw_name(config.raw, config.protocol, name)
+            if new_raw != config.raw:
+                config.raw = new_raw
+                changed = True
+        if changed and save:
+            self._save_configs()
+
+
     def add_config(self, raw: str, remarks: Optional[str] = None, added_by: str = "admin") -> DirectConfig:
         """Добавление новой прямой конфигурации"""
         try:
@@ -94,6 +180,7 @@ class DirectConfigService:
             self.configs.append(config)
             self.next_id += 1
             self._save_configs()
+            self._apply_auto_names(save=True)
             
             logger.info(f"Added direct config: {config.protocol}://{config.server}:{config.port}")
             return config
@@ -129,16 +216,131 @@ class DirectConfigService:
         if config:
             self.configs.remove(config)
             self._save_configs()
+            self._apply_auto_names(save=True)
             logger.info(f"Deleted direct config {config_id}")
             return True
         return False
     
+    def update_config(self, config_id: int, raw: Optional[str] = None, remarks: Optional[str] = None, added_by: Optional[str] = None) -> Optional[DirectConfig]:
+        """Обновление прямой конфигурации"""
+        config = self.get_config_by_id(config_id)
+        if not config:
+            return None
+
+        if raw is not None:
+            raw = raw.strip()
+            if not raw:
+                raise ValueError("Raw config cannot be empty")
+            result = checker.process_config(raw)
+            if not result:
+                raise ValueError("Invalid configuration format")
+
+            config.raw = raw
+            config.protocol = result["protocol"]
+            config.server = result["server"]
+            config.port = result["port"]
+            config.ping_ms = result["ping_ms"]
+            config.jitter_ms = result["jitter_ms"]
+            config.packet_loss = result["packet_loss"]
+            config.is_active = result["is_active"]
+            if remarks is None:
+                config.remarks = result["remarks"]
+
+        if remarks is not None:
+            config.remarks = remarks
+
+        if added_by is not None:
+            config.added_by = added_by
+
+        self._save_configs()
+        self._apply_auto_names(save=True)
+        logger.info(f"Updated direct config {config_id}")
+        return config
+
+    def move_config(self, config_id: int, direction: str) -> Optional[List[DirectConfig]]:
+        """Перемещение конфигурации вверх/вниз в списке"""
+        index = next((i for i, c in enumerate(self.configs) if c.id == config_id), None)
+        if index is None:
+            return None
+
+        if direction == "up":
+            if index == 0:
+                return self.configs
+            self.configs[index - 1], self.configs[index] = self.configs[index], self.configs[index - 1]
+        elif direction == "down":
+            if index >= len(self.configs) - 1:
+                return self.configs
+            self.configs[index + 1], self.configs[index] = self.configs[index], self.configs[index + 1]
+        else:
+            raise ValueError("Invalid direction. Use up or down.")
+
+        self._save_configs()
+        self._apply_auto_names(save=True)
+        logger.info(f"Moved direct config {config_id} {direction}")
+        return self.configs
+
+    def move_configs(self, config_ids: List[int], direction: str) -> List[DirectConfig]:
+        """Массовое перемещение выбранных конфигов на 1 позицию как блоки."""
+        if not config_ids:
+            return self.configs
+
+        selected = set(config_ids)
+
+        if direction == "up":
+            for i in range(1, len(self.configs)):
+                if self.configs[i].id in selected and self.configs[i - 1].id not in selected:
+                    self.configs[i - 1], self.configs[i] = self.configs[i], self.configs[i - 1]
+        elif direction == "down":
+            for i in range(len(self.configs) - 2, -1, -1):
+                if self.configs[i].id in selected and self.configs[i + 1].id not in selected:
+                    self.configs[i], self.configs[i + 1] = self.configs[i + 1], self.configs[i]
+        else:
+            raise ValueError("Invalid direction. Use up or down.")
+
+        self._save_configs()
+        self._apply_auto_names(save=True)
+        logger.info(f"Moved {len(config_ids)} direct configs {direction}")
+        return self.configs
+
+
     def update_config_ping(self, config_id: int, ping_ms: float, packet_loss: float = 0.0):
         """Обновление пинга и потерь для конфигурации"""
         config = self.get_config_by_id(config_id)
         if config:
             config.ping_ms = ping_ms
             config.packet_loss = packet_loss
+            self._save_configs()
+
+    def refresh_all_pings(self, force: bool = False) -> None:
+        """Переизмеряет ping/status для direct configs с ограничением частоты."""
+        now = time.time()
+        if not force and (now - self._last_ping_refresh_ts) < self._ping_refresh_interval_sec:
+            return
+
+        changed = False
+        for config in self.configs:
+            try:
+                ok, ping_ms = checker.probe_endpoint_sync(
+                    config.raw, config.protocol, config.server, config.port, timeout=2.5
+                )
+                new_ping = float(ping_ms if ok else 999.0)
+                new_loss = 0.0 if ok else 100.0
+                new_active = bool(ok)
+
+                if (
+                    config.ping_ms != new_ping
+                    or config.packet_loss != new_loss
+                    or config.is_active != new_active
+                ):
+                    config.ping_ms = new_ping
+                    config.packet_loss = new_loss
+                    config.is_active = new_active
+                    changed = True
+            except Exception as e:
+                logger.debug(f"Ping refresh failed for config {config.id}: {e}")
+
+        self._last_ping_refresh_ts = now
+        if changed:
             self._save_configs()
     
     def get_configs_for_subscription(self) -> List[DirectConfig]:

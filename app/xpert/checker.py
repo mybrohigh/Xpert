@@ -1,7 +1,9 @@
 import asyncio
 import base64
+import json
 import re
 import socket
+import ssl
 import subprocess
 import time
 import logging
@@ -21,6 +23,13 @@ class ConfigChecker:
         self.max_ping = config.XPERT_MAX_PING_MS
         self.target_ips = config.XPERT_TARGET_CHECK_IPS
         self.timeout = 3
+        self._target_probe_cache = {
+            "ts": 0.0,
+            "ok": False,
+            "avg_ping": 999.0,
+            "success_count": 0,
+        }
+        self._target_probe_ttl_sec = 30.0
     
     def parse_config(self, raw: str) -> Tuple[str, str, int, str]:
         """Парсинг конфигурации VPN"""
@@ -164,6 +173,134 @@ class ConfigChecker:
                 logger.debug(f"HTTP check failed for {host}:{port}: {e}")
         
         return False, 999.0
+
+    def check_connectivity_sync(self, host: str, port: int, timeout: float = 2.5) -> Tuple[bool, float]:
+        """Синхронная TCP-проверка доступности для вызова из API-хендлеров."""
+        try:
+            start_time = time.time()
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(timeout)
+            result = sock.connect_ex((host, port))
+            end_time = time.time()
+            sock.close()
+
+            if result == 0:
+                tcp_time = max(1.0, (end_time - start_time) * 1000)
+                return True, tcp_time
+        except Exception:
+            pass
+        return False, 999.0
+
+    def check_tls_handshake_sync(self, host: str, port: int, timeout: float = 3.0) -> Tuple[bool, float]:
+        """Синхронная проверка TCP+TLS handshake."""
+        raw_sock = None
+        tls_sock = None
+        try:
+            start_time = time.time()
+            raw_sock = socket.create_connection((host, port), timeout=timeout)
+            context = ssl.create_default_context()
+            context.check_hostname = False
+            context.verify_mode = ssl.CERT_NONE
+            tls_sock = context.wrap_socket(raw_sock, server_hostname=host)
+            end_time = time.time()
+            return True, max(1.0, (end_time - start_time) * 1000)
+        except Exception as e:
+            # EOF/Unexpected EOF during TLS handshake показываем отдельным значением.
+            err = str(e).lower()
+            if "eof" in err or "unexpected eof" in err:
+                return False, 1200.0
+            return False, 999.0
+        finally:
+            try:
+                if tls_sock:
+                    tls_sock.close()
+            except Exception:
+                pass
+            try:
+                if raw_sock:
+                    raw_sock.close()
+            except Exception:
+                pass
+
+    def should_use_tls_probe(self, raw: str, protocol: str, port: int) -> bool:
+        """Определяет, нужен ли TLS-handshake probe."""
+        p = (protocol or "").lower()
+        r = (raw or "").lower()
+
+        if port in [443, 8443, 2053, 2083, 2087, 2096]:
+            return True
+
+        if p == "trojan":
+            return True
+        if p == "vmess" and self._vmess_uses_tls(raw):
+            return True
+
+        tls_markers = [
+            "security=tls",
+            "security=reality",
+            "tls=1",
+            "type=grpc",
+            "sni=",
+            "alpn=",
+        ]
+        return any(m in r for m in tls_markers)
+
+    def _vmess_uses_tls(self, raw: str) -> bool:
+        try:
+            if not raw.startswith("vmess://"):
+                return False
+            encoded = raw.replace("vmess://", "")
+            padding = 4 - len(encoded) % 4
+            if padding != 4:
+                encoded += "=" * padding
+            data = json.loads(base64.b64decode(encoded).decode("utf-8"))
+            tls_val = str(data.get("tls", "")).lower()
+            scy_val = str(data.get("scy", "")).lower()
+            if tls_val in ["tls", "reality", "1", "true"]:
+                return True
+            if scy_val in ["tls", "reality"]:
+                return True
+            return any(bool(data.get(k)) for k in ["sni", "alpn", "fp", "pbk"])
+        except Exception:
+            return False
+
+    def _probe_target_ips_tls_cached(self, timeout: float = 2.0) -> Tuple[bool, float]:
+        now = time.time()
+        if (now - self._target_probe_cache["ts"]) < self._target_probe_ttl_sec:
+            return self._target_probe_cache["ok"], self._target_probe_cache["avg_ping"]
+
+        pings = []
+        for ip in self.target_ips or []:
+            ip = str(ip).strip()
+            if not ip:
+                continue
+            ok, ping_ms = self.check_tls_handshake_sync(ip, 443, timeout=timeout)
+            if ok:
+                pings.append(float(ping_ms))
+
+        ok = len(pings) > 0
+        avg_ping = (sum(pings) / len(pings)) if ok else 999.0
+        self._target_probe_cache = {
+            "ts": now,
+            "ok": ok,
+            "avg_ping": float(avg_ping),
+            "success_count": len(pings),
+        }
+        return ok, float(avg_ping)
+
+    def probe_endpoint_sync(self, raw: str, protocol: str, host: str, port: int, timeout: float = 2.5) -> Tuple[bool, float]:
+        """Унифицированная проверка endpoint: TLS-handshake или TCP connect."""
+        if self.should_use_tls_probe(raw, protocol, port):
+            cfg_ok, cfg_ping = self.check_tls_handshake_sync(host, port, timeout=timeout)
+        else:
+            cfg_ok, cfg_ping = self.check_connectivity_sync(host, port, timeout=timeout)
+
+        # Дополнительно учитываем TLS-handshake до Target IPs (кешировано).
+        target_ok, target_ping = self._probe_target_ips_tls_cached(timeout=min(2.0, timeout))
+        if cfg_ok and target_ok:
+            mixed = (float(cfg_ping) * 0.7) + (float(target_ping) * 0.3)
+            return True, max(1.0, mixed)
+        return cfg_ok, float(cfg_ping)
     
     async def check_ping(self, host: str) -> Tuple[float, float, float]:
         """Улучшенная проверка пинга с fallback на connectivity"""
@@ -281,7 +418,7 @@ class ConfigChecker:
         return configs
     
     def process_config(self, raw: str) -> Optional[dict]:
-        """Обработка одной конфигурации - БЕЗ проверки пинга"""
+        """Обработка одной конфигурации с TCP-проверкой доступности."""
         protocol, server, port, remarks = self.parse_config(raw)
         
         if not server or not port:
@@ -290,9 +427,13 @@ class ConfigChecker:
         
         logger.info(f"Added config: {protocol}://{server}:{port} - {remarks[:30]}...")
         
-        # ВСЕ конфиги считаем активными - проверка будет в клиенте
-        is_active = True
-        ping, jitter, loss = 0, 0, 0  # Нулевые значения для отображения
+        ok, tcp_ping = self.probe_endpoint_sync(raw, protocol, server, port, timeout=2.5)
+        if ok:
+            is_active = True
+            ping, jitter, loss = tcp_ping, 0.0, 0.0
+        else:
+            is_active = False
+            ping, jitter, loss = 999.0, 0.0, 100.0
         
         return {
             "raw": raw,

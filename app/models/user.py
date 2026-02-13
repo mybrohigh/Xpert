@@ -68,6 +68,7 @@ class User(BaseModel):
     inbounds: Dict[ProxyTypes, List[str]] = {}
     note: Optional[str] = Field(None, nullable=True)
     sub_updated_at: Optional[datetime] = Field(None, nullable=True)
+    first_sub_fetch_at: Optional[datetime] = Field(None, nullable=True)
     sub_last_user_agent: Optional[str] = Field(None, nullable=True)
     online_at: Optional[datetime] = Field(None, nullable=True)
     on_hold_expire_duration: Optional[int] = Field(None, nullable=True)
@@ -308,6 +309,9 @@ class UserResponse(User):
             url_prefix = (XRAY_SUBSCRIPTION_URL_PREFIX).replace('*', salt)
             token = create_subscription_token(self.username)
             self.subscription_url = f"{url_prefix}/{XRAY_SUBSCRIPTION_PATH}/{token}"
+        # Force v2ray format for all subscriptions
+        if self.subscription_url and not self.subscription_url.endswith("/v2ray"):
+            self.subscription_url = self.subscription_url.rstrip("/") + "/v2ray"
         return self
 
     @field_validator("proxies", mode="before")
