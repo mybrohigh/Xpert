@@ -160,3 +160,9 @@ xray-core
 *-dev.yml
 *-dev.yaml
 *-debug.*
+
+# Xpert runtime data (do not commit)
+data/
+
+# Local backup files
+*.bak.*

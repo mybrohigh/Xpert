@@ -9,8 +9,10 @@ from app.db import Session, crud, get_db
 from app.dependencies import get_validated_sub, validate_dates
 from app.models.user import SubscriptionUserResponse, UserResponse
 from app.subscription.share import encode_title, generate_subscription
-from app.xpert.hwid_lock_service import get_required_hwid_for_username, normalize_hwid
+from app.xpert.hwid_lock_service import check_and_register_hwid_for_username
+from app.xpert.ip_limit_service import check_and_register_ip_for_username, get_client_ip
 from app.templates import render_template
+from app import logger
 from config import (
     SUB_PROFILE_TITLE,
     SUB_SUPPORT_URL,
@@ -57,10 +59,16 @@ def get_subscription_user_info(user: UserResponse) -> dict:
 
 
 def _enforce_hwid_lock(user: UserResponse, x_hwid: str) -> None:
-    required_hwid = get_required_hwid_for_username(user.username)
-    if not required_hwid:
+    if not check_and_register_hwid_for_username(user.username, x_hwid):
+        raise HTTPException(status_code=404, detail="Not Found")
+
+
+def _enforce_unique_ip_limit(user: UserResponse, request: Request, user_agent: str) -> None:
+    # Apply only for non-Happ clients (Happ uses HWID logic).
+    if re.match(r"^Happ/", user_agent or ""):
         return
-    if normalize_hwid(x_hwid) != required_hwid:
+    ip = get_client_ip(request)
+    if not check_and_register_ip_for_username(user.username, ip):
         raise HTTPException(status_code=404, detail="Not Found")
 
 
@@ -76,7 +84,33 @@ def user_subscription(
 ):
     """Provides a subscription link based on the user agent (Clash, V2Ray, etc.)."""
     user: UserResponse = UserResponse.model_validate(dbuser)
+
+    # HAPP_HWID_DEBUG: log whether client sends x-hwid (needed for HWID limits).
+    if re.match(r"^Happ/", user_agent):
+        try:
+            from hashlib import sha256
+            v = x_hwid or ''
+            sig = sha256(v.encode('utf-8', 'ignore')).hexdigest()[:8] if v else '-'
+            logger.info(f"HAPP_HWID_DEBUG user={user.username} x_hwid_len={len(v)} sig={sig}")
+            if not v:
+                # Some Happ builds do not send x-hwid; log which X- headers exist to find a stable fallback.
+                hdrs = {k.lower(): request.headers.get(k, "") for k in request.headers.keys()}
+                x_names = sorted([k for k in hdrs.keys() if k.startswith("x-")])
+                picked_keys = [
+                    "x-device-os",
+                    "x-ver-os",
+                    "x-device-model",
+                    "x-device-id",
+                    "x-install-id",
+                    "x-app-instance-id",
+                ]
+                picked = {k: (hdrs.get(k, "")[:80]) for k in picked_keys if hdrs.get(k)}
+                logger.info(f"HAPP_HEADERS_DEBUG user={user.username} x_names={x_names} picked={picked}")
+        except Exception:
+            pass
+
     _enforce_hwid_lock(user, x_hwid)
+    _enforce_unique_ip_limit(user, request, user_agent)
 
     accept_header = request.headers.get("Accept", "")
     if "text/html" in accept_header:
@@ -101,6 +135,9 @@ def user_subscription(
         )
     }
 
+    if re.match(r'^Happ/', user_agent):
+        response_headers.pop("subscription-userinfo", None)
+        response_headers.pop("profile-web-page-url", None)
     if re.match(r'^([Cc]lash-verge|[Cc]lash[-\.]?[Mm]eta|[Ff][Ll][Cc]lash|[Mm]ihomo)', user_agent):
         conf = generate_subscription(user=user, config_format="clash-meta", as_base64=False, reverse=False)
         return Response(content=conf, media_type="text/yaml", headers=response_headers)
@@ -197,7 +234,33 @@ def user_subscription_with_client_type(
 ):
     """Provides a subscription link based on the specified client type (e.g., Clash, V2Ray)."""
     user: UserResponse = UserResponse.model_validate(dbuser)
+
+    # HAPP_HWID_DEBUG: log whether client sends x-hwid (needed for HWID limits).
+    if re.match(r"^Happ/", user_agent):
+        try:
+            from hashlib import sha256
+            v = x_hwid or ''
+            sig = sha256(v.encode('utf-8', 'ignore')).hexdigest()[:8] if v else '-'
+            logger.info(f"HAPP_HWID_DEBUG user={user.username} x_hwid_len={len(v)} sig={sig}")
+            if not v:
+                # Some Happ builds do not send x-hwid; log which X- headers exist to find a stable fallback.
+                hdrs = {k.lower(): request.headers.get(k, "") for k in request.headers.keys()}
+                x_names = sorted([k for k in hdrs.keys() if k.startswith("x-")])
+                picked_keys = [
+                    "x-device-os",
+                    "x-ver-os",
+                    "x-device-model",
+                    "x-device-id",
+                    "x-install-id",
+                    "x-app-instance-id",
+                ]
+                picked = {k: (hdrs.get(k, "")[:80]) for k in picked_keys if hdrs.get(k)}
+                logger.info(f"HAPP_HEADERS_DEBUG user={user.username} x_names={x_names} picked={picked}")
+        except Exception:
+            pass
+
     _enforce_hwid_lock(user, x_hwid)
+    _enforce_unique_ip_limit(user, request, user_agent)
 
     response_headers = {
         "content-disposition": f'attachment; filename="{user.username}"',
@@ -212,6 +275,9 @@ def user_subscription_with_client_type(
         )
     }
 
+    if re.match(r'^Happ/', user_agent):
+        response_headers.pop("subscription-userinfo", None)
+        response_headers.pop("profile-web-page-url", None)
     config = client_config.get(client_type)
     conf = generate_subscription(user=user,
                                  config_format=config["config_format"],

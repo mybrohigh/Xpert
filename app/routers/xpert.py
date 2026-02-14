@@ -9,8 +9,19 @@ from app.xpert.marzban_integration import marzban_integration
 from app.xpert.ping_stats import ping_stats_service
 from app.xpert.direct_config_service import direct_config_service
 from app.xpert.checker import checker
-from app.xpert.hwid_lock_service import set_required_hwid_for_subscription_url
+from app.xpert.hwid_lock_service import (
+    set_required_hwid_for_subscription_url,
+    set_hwid_limit_for_subscription_url,
+    clear_hwid_lock_for_username,
+)
+from app.xpert.ip_limit_service import (
+    DEFAULT_UNIQUE_IP_LIMIT,
+    WINDOW_SECONDS_DEFAULT,
+    get_unique_ip_limit_for_username,
+    set_unique_ip_limit_for_username,
+)
 from app.models.admin import Admin
+from app.db import Session, crud, get_db
 import config
 from app import logger
 
@@ -79,6 +90,16 @@ class TargetIPsUpdate(BaseModel):
 class CryptoLinkRequest(BaseModel):
     url: str
     hwid: Optional[str] = None
+    hwid_limit: Optional[int] = None
+
+
+class HWIDResetRequest(BaseModel):
+    username: str
+
+
+class UniqueIPLimitRequest(BaseModel):
+    username: str
+    limit: Optional[int] = None
 
 
 class DirectConfigResponse(BaseModel):
@@ -1100,14 +1121,54 @@ async def marzban_traffic_stats(days: int = 30):
         }
 
 @router.post("/crypto-link")
-async def create_crypto_link(data: CryptoLinkRequest, admin: Admin = Depends(Admin.get_current)):
+async def create_crypto_link(
+    data: CryptoLinkRequest,
+    admin: Admin = Depends(Admin.get_current),
+    db: Session = Depends(get_db),
+):
     try:
         payload = {"url": data.url.strip()}
-        if data.hwid and data.hwid.strip():
-            username = set_required_hwid_for_subscription_url(payload["url"], data.hwid)
+
+        hwid_value = (data.hwid or "").strip()
+        hwid_limit = data.hwid_limit
+
+        if hwid_limit is not None and not (1 <= int(hwid_limit) <= 5):
+            raise HTTPException(status_code=400, detail="HWID limit must be in range 1..5")
+
+        # For HWID options we must be able to parse and validate THIS panel /sub token.
+        username_from_url = None
+        if hwid_value or (hwid_limit is not None) or (not admin.is_sudo):
+            try:
+                from app.xpert.hwid_lock_service import extract_subscription_token
+                from app.utils.jwt import get_subscription_payload
+
+                token = extract_subscription_token(payload["url"])
+                sub = get_subscription_payload(token) if token else None
+                username_from_url = sub.get("username") if sub else None
+            except Exception:
+                username_from_url = None
+
+        # sudo=n: can encrypt ONLY own Marzban /sub link from this panel (with or without HWID options)
+        if not admin.is_sudo:
+            if not username_from_url:
+                raise HTTPException(status_code=403, detail="Only this panel Marzban /sub links are allowed")
+
+            dbuser = crud.get_user(db, username_from_url)
+            if not dbuser or not getattr(dbuser, "admin", None) or dbuser.admin.username != admin.username:
+                raise HTTPException(status_code=403, detail="You are not allowed")
+
+        # Apply HWID options (sudo=y or allowed sudo=n only)
+        if hwid_value:
+            username = set_required_hwid_for_subscription_url(payload["url"], hwid_value)
             if not username:
                 raise HTTPException(status_code=400, detail="HWID mode requires a valid Marzban /sub URL")
-            payload["hwid"] = data.hwid.strip()
+            payload["hwid"] = hwid_value
+
+        if hwid_limit is not None:
+            username = set_hwid_limit_for_subscription_url(payload["url"], int(hwid_limit), hwid_value)
+            if not username:
+                raise HTTPException(status_code=400, detail="HWID limit mode requires a valid Marzban /sub URL")
+
         resp = requests.post("https://crypto.happ.su/api-v2.php", json=payload, timeout=15)
         resp.raise_for_status()
         content_type = resp.headers.get("content-type", "")
@@ -1117,14 +1178,103 @@ async def create_crypto_link(data: CryptoLinkRequest, admin: Admin = Depends(Adm
                 if isinstance(j, str):
                     return {"link": j}
                 if isinstance(j, dict):
-                    for key in ("url", "link", "result", "data", "encrypted"):
+                    for key in ("url", "link", "result", "data", "encrypted", "encrypted_link"):
                         if key in j and isinstance(j[key], str):
                             return {"link": j[key]}
                     return j
             except Exception:
                 pass
+
         text = resp.text.strip()
         return {"link": text}
+    except HTTPException:
+        raise
     except Exception:
         logger.exception("crypto-link failed")
         raise HTTPException(status_code=502, detail="Crypto link generation failed")
+
+
+@router.post("/hwid/reset")
+async def reset_hwid_binding(
+    data: HWIDResetRequest,
+    admin: Admin = Depends(Admin.get_current),
+):
+    """
+    Clears stored HWID lock/limit for a user.
+    доступно всем админам (sudo=y и sudo=n).
+    """
+    username = (data.username or "").strip()
+    if not username:
+        raise HTTPException(status_code=400, detail="username is required")
+
+    cleared = clear_hwid_lock_for_username(username)
+    return {"cleared": bool(cleared)}
+
+
+@router.get("/ip-limit/{username}")
+async def get_unique_ip_limit(
+    username: str,
+    admin: Admin = Depends(Admin.get_current),
+    db: Session = Depends(get_db),
+):
+    """
+    Returns unique IP limit (per 2 hours window) for a user.
+    доступно админам по своим пользователям, sudo=y по всем.
+    """
+    username = (username or "").strip()
+    if not username:
+        raise HTTPException(status_code=400, detail="username is required")
+
+    dbuser = crud.get_user(db, username)
+    if not dbuser:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not admin.is_sudo:
+        if not getattr(dbuser, "admin", None) or dbuser.admin.username != admin.username:
+            raise HTTPException(status_code=403, detail="You are not allowed")
+
+    limit = get_unique_ip_limit_for_username(username)
+    return {
+        "username": username,
+        "limit": int(limit),
+        "window_seconds": int(WINDOW_SECONDS_DEFAULT),
+        "default_limit": int(DEFAULT_UNIQUE_IP_LIMIT),
+    }
+
+
+@router.post("/ip-limit")
+async def set_unique_ip_limit(
+    data: UniqueIPLimitRequest,
+    admin: Admin = Depends(Admin.get_current),
+    db: Session = Depends(get_db),
+):
+    """
+    Sets per-user unique IP limit. limit=None or limit==default clears override.
+    доступно админам по своим пользователям, sudo=y по всем.
+    """
+    username = (data.username or "").strip()
+    if not username:
+        raise HTTPException(status_code=400, detail="username is required")
+
+    dbuser = crud.get_user(db, username)
+    if not dbuser:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not admin.is_sudo:
+        if not getattr(dbuser, "admin", None) or dbuser.admin.username != admin.username:
+            raise HTTPException(status_code=403, detail="You are not allowed")
+
+    limit = data.limit
+    if limit is not None:
+        try:
+            limit = int(limit)
+        except Exception:
+            raise HTTPException(status_code=400, detail="limit must be an integer")
+        if limit < 1:
+            raise HTTPException(status_code=400, detail="limit must be >= 1")
+
+    set_unique_ip_limit_for_username(username, limit)
+    return {
+        "username": username,
+        "limit": int(get_unique_ip_limit_for_username(username)),
+        "window_seconds": int(WINDOW_SECONDS_DEFAULT),
+        "default_limit": int(DEFAULT_UNIQUE_IP_LIMIT),
+    }

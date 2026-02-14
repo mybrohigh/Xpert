@@ -232,5 +232,7 @@
   "cryptoLink.empty": "请输入链接",
   "cryptoLink.done": "完成",
   "cryptoLink.failed": "加密失败",
-  "traffic.menu": "流量管理"
+  "traffic.menu": "流量管理",
+  "cryptoLink.hwidLimit": "HWID 设备上限",
+  "cryptoLink.hwidLimitPlaceholder": "不限（旧方式）"
 }

@@ -236,5 +236,7 @@
   "cryptoLink.empty": "لینک لازم است",
   "cryptoLink.done": "انجام شد",
   "cryptoLink.failed": "خطای رمز",
-  "traffic.menu": "مدیر ترافیک"
+  "traffic.menu": "مدیر ترافیک",
+  "cryptoLink.hwidLimit": "محدودیت دستگاه HWID",
+  "cryptoLink.hwidLimitPlaceholder": "بدون محدودیت (روش قبلی)"
 }

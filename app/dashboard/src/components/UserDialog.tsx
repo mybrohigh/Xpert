@@ -45,6 +45,7 @@ import ReactApexChart from "react-apexcharts";
 import ReactDatePicker from "react-datepicker";
 import { Controller, FormProvider, useForm, useWatch } from "react-hook-form";
 import { useTranslation } from "react-i18next";
+import { fetch } from "service/http";
 import {
   ProxyKeys,
   ProxyType,
@@ -87,6 +88,7 @@ export type UserDialogProps = {};
 
 export type FormType = Pick<UserCreate, keyof UserCreate> & {
   selected_proxies: ProxyKeys;
+  unique_ip_limit: string;
 };
 
 const formatUser = (user: User): FormType => {
@@ -99,6 +101,7 @@ const formatUser = (user: User): FormType => {
       ? Number(user.on_hold_expire_duration / (24 * 60 * 60))
       : user.on_hold_expire_duration,
     selected_proxies: Object.keys(user.proxies) as ProxyKeys,
+    unique_ip_limit: "3",
   };
 };
 const getDefaultValues = (): FormType => {
@@ -116,6 +119,7 @@ const getDefaultValues = (): FormType => {
     status: "active",
     on_hold_expire_duration: null,
     note: "",
+    unique_ip_limit: "3",
     inbounds,
     proxies: {
       vless: { id: "", flow: "" },
@@ -149,6 +153,7 @@ const baseSchema = {
     message: "userDialog.selectOneProtocol",
   }),
   note: z.string().nullable(),
+  unique_ip_limit: z.string().default("3"),
   proxies: z
     .record(z.string(), z.record(z.string(), z.any()))
     .transform((ins) => {
@@ -278,6 +283,16 @@ export const UserDialog: FC<UserDialogProps> = () => {
     if (editingUser) {
       form.reset(formatUser(editingUser));
 
+      // Load per-user unique IP limit (2h window) for non-Happ clients.
+      fetch(`/xpert/ip-limit/${encodeURIComponent(editingUser.username)}`)
+        .then((resp: any) => {
+          const limit = resp?.limit ?? 3;
+          form.setValue("unique_ip_limit", String(limit));
+        })
+        .catch(() => {
+          form.setValue("unique_ip_limit", "3");
+        });
+
       fetchUsageWithFilter({
         start: dayjs().utc().subtract(30, "day").format("YYYY-MM-DDTHH:00:00"),
       });
@@ -290,7 +305,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
     const method = isEditing ? "edited" : "created";
     setError(null);
 
-    const { selected_proxies, ...rest } = values;
+    const { selected_proxies, unique_ip_limit, ...rest } = values;
 
     let body: UserCreate = {
       ...rest,
@@ -309,7 +324,25 @@ export const UserDialog: FC<UserDialogProps> = () => {
     };
 
     methods[method](body)
-      .then(() => {
+      .then(async () => {
+        // Apply unique IP limit setting (default=3 clears override on backend).
+        const limitNum = Number(unique_ip_limit || "3");
+        try {
+          await fetch("/xpert/ip-limit", {
+            method: "POST",
+            body: { username: values.username, limit: limitNum },
+          });
+        } catch (e) {
+          // Do not fail user save if this extra setting fails.
+          toast({
+            title: t("userDialog.uniqueIpLimitFailed"),
+            status: "warning",
+            isClosable: true,
+            position: "top",
+            duration: 3000,
+          });
+        }
+
         toast({
           title: t(
             isEditing ? "userDialog.userEdited" : "userDialog.userCreated",
@@ -700,10 +733,21 @@ export const UserDialog: FC<UserDialogProps> = () => {
                         isInvalid={!!form.formState.errors.note}
                       >
                         <FormLabel>{t("userDialog.note")}</FormLabel>
-                        <Textarea {...form.register("note")} />
+                        <Textarea {...form.register("note")} minH="70px" />
                         <FormErrorMessage>
                           {form.formState.errors?.note?.message}
                         </FormErrorMessage>
+                      </FormControl>
+                      <FormControl mb={"10px"}>
+                        <FormLabel>{t("userDialog.uniqueIpLimit")}</FormLabel>
+                        <Select size="sm" {...form.register("unique_ip_limit")}>
+                          <option value="1">1</option>
+                          <option value="2">2</option>
+                          <option value="3">3</option>
+                          <option value="4">4</option>
+                          <option value="5">5</option>
+                        </Select>
+                        <FormHelperText>{t("userDialog.uniqueIpLimitHelp")}</FormHelperText>
                       </FormControl>
                     </Flex>
                     {error && (
