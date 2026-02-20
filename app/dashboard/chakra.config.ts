@@ -96,18 +96,6 @@ export const theme = extendTheme({
         borderColor: "rgba(148, 163, 184, 0.5) !important",
         color: "#dbe7ff",
       },
-      ".chakra-ui-dark select.chakra-select": {
-        backgroundColor: "rgba(19, 24, 45, 0.92) !important",
-        color: "#dbe7ff !important",
-      },
-      ".chakra-ui-dark select.chakra-select option": {
-        backgroundColor: "#0f172a !important",
-        color: "#dbe7ff !important",
-      },
-      ".chakra-ui-dark select.chakra-select optgroup": {
-        backgroundColor: "#0f172a !important",
-        color: "#dbe7ff !important",
-      },
       ".chakra-ui-dark .chakra-numberinput__field": {
         bg: "rgba(19, 24, 45, 0.5) !important",
         borderColor: "rgba(148, 163, 184, 0.5) !important",
@@ -133,32 +121,16 @@ export const theme = extendTheme({
         boxShadow:
           "inset 1px 1px 0 rgba(255,255,255,0.14), inset -1px -1px 0 rgba(148,163,184,0.12)",
       },
-      "#filters": {
-        background: "transparent !important",
-        border: "none",
-        borderRadius: "0",
-        backdropFilter: "none",
-        WebkitBackdropFilter: "none",
-        width: "100%",
-        marginInline: "0",
-        transition: "background .25s ease, backdrop-filter .25s ease",
-      },
-      ".xpert-scrolled #filters": {
-        background: "rgba(15, 20, 40, 0.24) !important",
-        backdropFilter: "blur(18px)",
-        WebkitBackdropFilter: "blur(18px)",
-      },
       ".xpert-page-shift": {
-        transition: "none",
+        transition: "transform .25s ease",
       },
       "@media (min-width: 48em)": {
-        ".xpert-side-open #root": {
-          overflowX: "hidden",
-        },
         ".xpert-side-open main": {
-          paddingRight: "336px",
-          boxSizing: "border-box",
+          paddingRight: "300px",
           transition: "padding-right .25s ease",
+        },
+        ".xpert-side-open .xpert-page-shift": {
+          transform: "translateX(-8px)",
         },
       },
     },

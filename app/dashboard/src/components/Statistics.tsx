@@ -26,7 +26,6 @@ const parseOnlineAtTs = (value: unknown): number | null => {
     if (value > 1e9) return Math.floor(value); // sec
     return null;
   }
-
   const raw = String(value).trim();
   if (!raw) return null;
   const asNum = Number(raw);
@@ -34,20 +33,8 @@ const parseOnlineAtTs = (value: unknown): number | null => {
     if (asNum > 1e12) return Math.floor(asNum / 1000);
     if (asNum > 1e9) return Math.floor(asNum);
   }
-
-  const hasTimezone = /([zZ]|[+-]\d{2}:?\d{2})$/.test(raw);
-  const normalized = hasTimezone ? raw : `${raw}Z`;
-  let ms = new Date(normalized).getTime();
-
-  if (!Number.isFinite(ms)) {
-    // JS Date supports milliseconds; trim extra precision from Python microseconds.
-    const trimmed = normalized.replace(
-      /\.(\d{3})\d+([zZ]|[+-]\d{2}:?\d{2})$/,
-      ".$1$2"
-    );
-    ms = new Date(trimmed).getTime();
-  }
-
+  let ms = new Date(raw).getTime();
+  if (!Number.isFinite(ms)) ms = new Date(`${raw}Z`).getTime();
   if (!Number.isFinite(ms)) return null;
   return Math.floor(ms / 1000);
 };

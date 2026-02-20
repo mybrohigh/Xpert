@@ -23,6 +23,7 @@ import {
   MoonIcon,
   SquaresPlusIcon,
   SunIcon,
+  ChartBarIcon,
   LockClosedIcon,
   ClipboardDocumentListIcon,
 } from "@heroicons/react/24/outline";
@@ -87,6 +88,14 @@ const neonAdminLimitsIconProps = {
     filter: "drop-shadow(0 0 2px rgba(250,204,21,0.85))",
   },
 };
+const neonTrafficIconProps = {
+  baseStyle: {
+    w: 4,
+    h: 4,
+    color: "#60a5fa",
+    filter: "drop-shadow(0 0 2px rgba(96,165,250,0.85))",
+  },
+};
 const neonAdminManagerIconProps = {
   baseStyle: {
     w: 4,
@@ -115,14 +124,15 @@ const neonLogoutIconProps = {
   baseStyle: {
     w: 4,
     h: 4,
-    color: "#60a5fa",
-    filter: "drop-shadow(0 0 2px rgba(96,165,250,0.85))",
+    color: "#c084fc",
+    filter: "drop-shadow(0 0 2px rgba(192,132,252,0.85))",
   },
 };
 
 const DarkIcon = chakra(MoonIcon, iconProps);
 const LightIcon = chakra(SunIcon, iconProps);
 const CoreSettingsIcon = chakra(Cog6ToothIcon, iconProps);
+const TrafficManagerIcon = chakra(ChartBarIcon, neonTrafficIconProps);
 const CryptoLinkIcon = chakra(LockClosedIcon, neonCryptoIconProps);
 const SettingsIcon = chakra(Bars3Icon, iconProps);
 const LogoutIcon = chakra(ArrowLeftOnRectangleIcon, neonLogoutIconProps);
@@ -296,6 +306,11 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
                   <MenuItem maxW="170px" fontSize="sm" icon={<AdminLimitsIcon />} onClick={onEditingAdminLimits.bind(null, true)}>
                     {t("adminLimits.menu")}
                   </MenuItem>
+                  <Link to="/traffic/">
+                    <MenuItem maxW="170px" fontSize="sm" icon={<TrafficManagerIcon />} onClick={handleOnClose}>
+                      {t("traffic.menu")}
+                    </MenuItem>
+                  </Link>
                   <Link to="/admin-manager/">
                     <MenuItem maxW="170px" fontSize="sm" icon={<AdminManagerIcon />} onClick={handleOnClose}>
                       {t("adminManager.menu")}
@@ -341,7 +356,7 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
             w="320px"
             zIndex={1200}
             flexDirection="column"
-            p={0}
+            p={3}
             _dark={{
               bg: "transparent",
               backdropFilter: "blur(16px)",
@@ -372,6 +387,11 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
                   <Button size="sm" h="50px" w="full" px={4} textAlign="left" justifyContent="flex-start" leftIcon={<AdminLimitsIcon />} onClick={() => { onEditingAdminLimits(true); closeSideMenu(); }}>
                     {t("adminLimits.menu")}
                   </Button>
+                  <Link to="/traffic/" onClick={closeSideMenu} style={{ display: "block", width: "100%" }}>
+                    <Button size="sm" h="50px" px={4} w="full" textAlign="left" justifyContent="flex-start" leftIcon={<TrafficManagerIcon />}>
+                      {t("traffic.menu")}
+                    </Button>
+                  </Link>
                   <Link to="/admin-manager/" onClick={closeSideMenu} style={{ display: "block", width: "100%" }}>
                     <Button size="sm" h="50px" px={4} w="full" textAlign="left" justifyContent="flex-start" leftIcon={<AdminManagerIcon />}>
                       {t("adminManager.menu")}
@@ -389,7 +409,7 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
                 </Button>
               </Link>
               <Link to="/login" onClick={closeSideMenu} style={{ display: "block", width: "100%" }}>
-                <Button size="sm" h="50px" px={4} w="full" textAlign="left" justifyContent="flex-start" leftIcon={<LogoutIcon />}>
+                <Button size="sm" h="50px" px={4} w="full" textAlign="left" justifyContent="flex-start">
                   {t("header.logout")}
                 </Button>
               </Link>
