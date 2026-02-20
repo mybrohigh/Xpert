@@ -6,6 +6,7 @@ import {
   FormControl,
   FormLabel,
   HStack,
+  Stack,
   Modal,
   ModalBody,
   ModalCloseButton,
@@ -66,6 +67,8 @@ export const AdminLimitsModal: FC = () => {
   const [usersLimit, setUsersLimit] = useState<string>("");
   const [trafficLimit, setTrafficLimit] = useState<string>("");
   const [trafficUnit, setTrafficUnit] = useState<string>("GB");
+  const [userTrafficLimit, setUserTrafficLimit] = useState<string>("");
+  const [userTrafficUnit, setUserTrafficUnit] = useState<string>("GB");
   const [usersCount, setUsersCount] = useState<number>(0);
 
   const nonSudoAdmins = useMemo(
@@ -135,6 +138,8 @@ export const AdminLimitsModal: FC = () => {
       setUsersLimit("");
       setTrafficLimit("");
       setTrafficUnit("GB");
+      setUserTrafficLimit("");
+      setUserTrafficUnit("GB");
       setUsersCount(0);
       return;
     }
@@ -146,6 +151,16 @@ export const AdminLimitsModal: FC = () => {
         ? String(selectedAdmin.users_limit)
         : ""
     );
+    fetch<{ limit_bytes: number | null }>(`/xpert/admin-user-traffic-limit/${encodeURIComponent(selectedAdmin.username)}`)
+      .then((res) => {
+        const convertedUser = bytesToUnit(res?.limit_bytes ?? null);
+        setUserTrafficLimit(convertedUser.value);
+        setUserTrafficUnit(convertedUser.unit);
+      })
+      .catch(() => {
+        setUserTrafficLimit("");
+        setUserTrafficUnit("GB");
+      });
     fetch<UsersResponse>(`/users`, {
       query: { admin: [selectedAdmin.username], limit: 1 },
     })
@@ -197,21 +212,43 @@ export const AdminLimitsModal: FC = () => {
   const onSave = () => {
     if (!selectedAdmin) return;
     const trafficValue = parseLimit(trafficLimit);
+    const userTrafficValue = parseLimit(userTrafficLimit);
     const payload = {
       is_sudo: selectedAdmin.is_sudo,
       traffic_limit:
         trafficValue === null ? null : unitToBytes(trafficValue, trafficUnit),
       users_limit: parseLimit(usersLimit),
     };
+    const userTrafficPayload = {
+      admin_username: selectedAdmin.username,
+      limit_bytes:
+        userTrafficValue === null ? null : unitToBytes(userTrafficValue, userTrafficUnit),
+    };
+
     setSaving(true);
-    fetch(`/admin/${selectedAdmin.username}`, {
-      method: "PUT",
-      body: payload,
-    })
-      .then((updated: Admin) => {
+    Promise.all([
+      fetch(`/admin/${selectedAdmin.username}`, {
+        method: "PUT",
+        body: payload,
+      }),
+      fetch(`/xpert/admin-user-traffic-limit`, {
+        method: "POST",
+        body: userTrafficPayload,
+      }),
+    ])
+      .then(([updated, userTrafficResp]: [Admin, any]) => {
         setAdmins((prev) =>
           prev.map((a) => (a.username === updated.username ? updated : a))
         );
+        if (typeof userTrafficResp?.updated_users === "number") {
+          toast({
+            title: t("adminLimits.userTrafficApplied", { count: userTrafficResp.updated_users }),
+            status: "info",
+            isClosable: true,
+            position: "top",
+            duration: 2500,
+          });
+        }
         toast({
           title: t("adminLimits.saveSuccess"),
           status: "success",
@@ -233,9 +270,9 @@ export const AdminLimitsModal: FC = () => {
   };
 
   return (
-    <Modal isCentered isOpen={isEditingAdminLimits} onClose={onClose} size="xl">
+    <Modal isCentered isOpen={isEditingAdminLimits} onClose={onClose} size="xl" scrollBehavior="inside">
       <ModalOverlay bg="blackAlpha.300" backdropFilter="blur(10px)" />
-      <ModalContent mx="3">
+      <ModalContent mx="3" w={{ base: "calc(100vw - 24px)", md: "auto" }} maxW={{ base: "calc(100vw - 24px)", md: "3xl" }}>
         <ModalHeader pt={6}>
           <Icon color="primary">
             <LimitsIcon />
@@ -283,7 +320,7 @@ export const AdminLimitsModal: FC = () => {
               </Select>
             </FormControl>
 
-            <HStack spacing={3} align="flex-start">
+            <Stack spacing={3} align="flex-start" direction={{ base: "column", md: "row" }}>
               <FormControl>
                 <FormLabel fontSize="sm">{t("adminLimits.usersLimit")}</FormLabel>
                 <NumberInput
@@ -325,53 +362,117 @@ export const AdminLimitsModal: FC = () => {
                   </Select>
                 </HStack>
               </FormControl>
-            </HStack>
+            </Stack>
+
+            <FormControl>
+              <FormLabel fontSize="sm">{t("adminLimits.userTrafficLimit")}</FormLabel>
+              <HStack>
+                <NumberInput
+                  size="sm"
+                  min={0}
+                  value={userTrafficLimit}
+                  onChange={(valueString) => setUserTrafficLimit(valueString)}
+                >
+                  <NumberInputField placeholder={t("adminLimits.userTrafficLimitPlaceholder")} />
+                  <NumberInputStepper>
+                    <NumberIncrementStepper />
+                    <NumberDecrementStepper />
+                  </NumberInputStepper>
+                </NumberInput>
+                <Select
+                  size="sm"
+                  value={userTrafficUnit}
+                  onChange={(e) => setUserTrafficUnit(e.target.value)}
+                  width="90px"
+                >
+                  <option value="GB">GB</option>
+                  <option value="TB">TB</option>
+                </Select>
+              </HStack>
+            </FormControl>
 
             <VStack spacing={2} align="stretch">
               <Text fontWeight="semibold" fontSize="sm">
                 {t("adminLimits.tableTitle")}
               </Text>
-              <Box overflowX="auto" border="1px solid" borderColor="gray.200" _dark={{ borderColor: "gray.600" }} borderRadius="md" p={2}>
-              <Table size="sm" variant="simple">
-                <Thead>
-                  <Tr>
-                    <Th>{t("adminLimits.tableAdmin")}</Th>
-                    <Th isNumeric>{t("adminLimits.tableUsers")}</Th>
-                    <Th isNumeric>{t("adminLimits.tableUsersLimit")}</Th>
-                    <Th isNumeric>{t("adminLimits.tableTrafficUsed")}</Th>
-                    <Th isNumeric>{t("adminLimits.tableTrafficLimit")}</Th>
-                    <Th textAlign="right">{t("adminLimits.tableActions")}</Th>
-                  </Tr>
-                </Thead>
-                <Tbody>
-                  {nonSudoAdmins.map((admin) => (
-                    <Tr key={admin.username} bg={isOverLimit(admin) ? "red.50" : undefined} _dark={isOverLimit(admin) ? { bg: "red.900" } : undefined}>
-                      <Td>{admin.username}</Td>
-                      <Td isNumeric>{admin.username === selected ? usersCount : "-"}</Td>
-                      <Td isNumeric>{admin.users_limit ?? "-"}</Td>
-                      <Td isNumeric>{formatBytes(admin.users_usage)}</Td>
-                      <Td isNumeric>{admin.traffic_limit ? formatBytes(admin.traffic_limit) : "-"}</Td>
-                      <Td textAlign="right">
-                        <Button
-                          size="xs"
-                          variant="outline"
-                          onClick={() => onResetAdminUsage(admin.username)}
-                          isDisabled={saving}
-                        >
-                          {t("adminLimits.resetUsage")}
-                        </Button>
-                      </Td>
+              <Box
+                display={{ base: "none", md: "block" }}
+                overflowX="auto"
+                border="1px solid"
+                borderColor="gray.200"
+                _dark={{ borderColor: "rgba(191, 219, 254, 0.24)", bg: "rgba(12, 16, 32, 0.5)" }}
+                borderRadius="md"
+                p={2}
+              >
+                <Table size="sm" variant="simple">
+                  <Thead bg="gray.50" _dark={{ bg: "rgba(24, 30, 58, 0.62)" }}>
+                    <Tr>
+                      <Th>{t("adminLimits.tableAdmin")}</Th>
+                      <Th isNumeric>{t("adminLimits.tableUsers")}</Th>
+                      <Th isNumeric>{t("adminLimits.tableUsersLimit")}</Th>
+                      <Th isNumeric>{t("adminLimits.tableTrafficUsed")}</Th>
+                      <Th isNumeric>{t("adminLimits.tableTrafficLimit")}</Th>
+                      <Th textAlign="right">{t("adminLimits.tableActions")}</Th>
                     </Tr>
-                  ))}
-                </Tbody>
-              </Table>
+                  </Thead>
+                  <Tbody>
+                    {nonSudoAdmins.map((admin) => (
+                      <Tr key={admin.username} bg={isOverLimit(admin) ? "red.50" : undefined} _dark={isOverLimit(admin) ? { bg: "red.900" } : undefined}>
+                        <Td whiteSpace="nowrap">{admin.username}</Td>
+                        <Td isNumeric>{admin.username === selected ? usersCount : "-"}</Td>
+                        <Td isNumeric>{admin.users_limit ?? "-"}</Td>
+                        <Td isNumeric whiteSpace="nowrap">{formatBytes(admin.users_usage)}</Td>
+                        <Td isNumeric whiteSpace="nowrap">{admin.traffic_limit ? formatBytes(admin.traffic_limit) : "-"}</Td>
+                        <Td textAlign="right">
+                          <Button
+                            size="xs"
+                            variant="outline"
+                            onClick={() => onResetAdminUsage(admin.username)}
+                            isDisabled={saving}
+                          >
+                            {t("adminLimits.resetUsage")}
+                          </Button>
+                        </Td>
+                      </Tr>
+                    ))}
+                  </Tbody>
+                </Table>
               </Box>
+
+              <VStack display={{ base: "flex", md: "none" }} spacing={2} align="stretch">
+                {nonSudoAdmins.map((admin) => (
+                  <Box
+                    key={admin.username}
+                    border="1px solid"
+                    borderColor="gray.200"
+                    _dark={{ borderColor: "rgba(191, 219, 254, 0.24)", bg: "rgba(12, 16, 32, 0.5)" }}
+                    borderRadius="md"
+                    p={3}
+                  >
+                    <HStack justify="space-between" mb={2}>
+                      <Text fontWeight="semibold" fontSize="sm">{admin.username}</Text>
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        onClick={() => onResetAdminUsage(admin.username)}
+                        isDisabled={saving}
+                      >
+                        {t("adminLimits.resetUsage")}
+                      </Button>
+                    </HStack>
+                    <HStack justify="space-between"><Text fontSize="xs">{t("adminLimits.tableUsers")}</Text><Text fontSize="xs">{admin.username === selected ? usersCount : "-"}</Text></HStack>
+                    <HStack justify="space-between"><Text fontSize="xs">{t("adminLimits.tableUsersLimit")}</Text><Text fontSize="xs">{admin.users_limit ?? "-"}</Text></HStack>
+                    <HStack justify="space-between"><Text fontSize="xs">{t("adminLimits.tableTrafficUsed")}</Text><Text fontSize="xs">{formatBytes(admin.users_usage)}</Text></HStack>
+                    <HStack justify="space-between"><Text fontSize="xs">{t("adminLimits.tableTrafficLimit")}</Text><Text fontSize="xs">{admin.traffic_limit ? formatBytes(admin.traffic_limit) : "-"}</Text></HStack>
+                  </Box>
+                ))}
+              </VStack>
             </VStack>
 
           </VStack>
         </ModalBody>
-        <ModalFooter display="flex">
-          <Button size="sm" onClick={onClose} mr={3} w="full" variant="outline">
+        <ModalFooter display="flex" flexDirection={{ base: "column", md: "row" }} gap={2}>
+          <Button size="sm" onClick={onClose} mr={{ base: 0, md: 3 }} w="full" variant="outline">
             {t("cancel")}
           </Button>
           <Button

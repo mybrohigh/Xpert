@@ -25,6 +25,30 @@
             }
         },
         {
+            "tag": "VLESS WS",
+            "listen": "0.0.0.0",
+            "port": 80,
+            "protocol": "vless",
+            "settings": {
+                "clients": [],
+                "decryption": "none"
+            },
+            "streamSettings": {
+                "network": "ws",
+                "security": "none",
+                "wsSettings": {
+                    "path": "/"
+                }
+            },
+            "sniffing": {
+                "enabled": true,
+                "destOverride": [
+                    "http",
+                    "tls"
+                ]
+            }
+        },
+        {
             "tag": "VLESS-XHTTP-NOTLS",
             "listen": "0.0.0.0",
             "port": 2027,

@@ -59,7 +59,8 @@ def _xpert_allowed_for_user(extra_data: dict) -> bool:
         return False
 
     expire = extra_data.get("expire")
-    if expire is not None and expire >= 0:
+    # `expire` of 0 means unlimited in Marzban/Xpert and should stay allowed.
+    if expire is not None and expire > 0:
         now_ts = int(dt.utcnow().timestamp())
         if expire <= now_ts:
             return False
@@ -473,26 +474,8 @@ def generate_subscription(
     else:
         raise ValueError(f'Unsupported format "{config_format}"')
 
-    # Добавляем Happ routing для фильтрации по геолокации
+    # Happ routing injection disabled to avoid forced Geo package prompts in clients.
     if config_format == "v2ray":
-        try:
-            from app.xpert.service import xpert_service
-            from app.xpert.routing_service import routing_service
-            
-            # Получаем все конфиги для routing
-            all_configs = xpert_service.get_all_configs()
-            
-            # Определяем профиль routing на основе IP пользователя
-            user_ip = getattr(user, 'last_ip', None)
-            profile_key = routing_service._detect_user_region(user_ip)
-            
-            # Добавляем routing в подписку
-            config = routing_service.add_routing_to_subscription(config, profile_key, all_configs)
-            
-            logger.info(f"Added Happ routing profile '{profile_key}' to subscription")
-        except Exception as e:
-            logger.error(f"Failed to add routing to subscription: {e}")
-
         try:
             if _xpert_allowed_for_user(kwargs["extra_data"]):
                 from app.xpert.service import xpert_service
@@ -541,7 +524,8 @@ def setup_format_variables(extra_data: dict) -> dict:
     now_ts = now.timestamp()
 
     if user_status != UserStatus.on_hold:
-        if expire_timestamp is not None and expire_timestamp >= 0:
+        # `expire_timestamp` <= 0 is treated as unlimited.
+        if expire_timestamp is not None and expire_timestamp > 0:
             seconds_left = expire_timestamp - int(dt.utcnow().timestamp())
             expire_datetime = dt.fromtimestamp(expire_timestamp)
             expire_date = expire_datetime.date()

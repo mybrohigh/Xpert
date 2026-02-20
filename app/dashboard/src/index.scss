@@ -85,10 +85,16 @@ table thead {
 }
 
 .chakra-ui-dark .react-datepicker {
-  background-color: var(--chakra-colors-gray-700) !important;
-  border: 1px solid var(--chakra-colors-gray-600);
+  background-color: rgba(19, 24, 45, 0.92) !important;
+  border: 1px solid rgba(191, 219, 254, 0.28);
   border-radius: var(--chakra-radii-md) !important;
   position: relative;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    inset 0 -1px 0 rgba(148, 163, 184, 0.12),
+    0 10px 24px rgba(0, 0, 0, 0.28);
 }
 
 .react-datepicker__header {
@@ -99,7 +105,7 @@ table thead {
 }
 
 .chakra-ui-dark .react-datepicker__header {
-  border-bottom: 1px solid var(--chakra-colors-gray-600);
+  border-bottom: 1px solid rgba(191, 219, 254, 0.24);
 }
 
 .react-datepicker-popper[data-placement^=bottom] .react-datepicker__triangle::after {
@@ -114,12 +120,12 @@ table thead {
 
 .chakra-ui-dark .react-datepicker-popper[data-placement^=bottom] .react-datepicker__triangle::after {
   border-top: none;
-  border-bottom-color: var(--chakra-colors-gray-700);
+  border-bottom-color: rgba(19, 24, 45, 0.92);
 }
 
 .chakra-ui-dark .react-datepicker-popper[data-placement^=bottom] .react-datepicker__triangle::before {
   top: -1px;
-  border-bottom-color: var(--chakra-colors-gray-600);
+  border-bottom-color: rgba(191, 219, 254, 0.24);
 }
 
 .react-datepicker__current-month,

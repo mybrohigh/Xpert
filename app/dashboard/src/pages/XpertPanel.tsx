@@ -115,6 +115,7 @@ export const XpertPanel: FC = () => {
   const [configs, setConfigs] = useState<Config[]>([]);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
+  const isMobile = useBreakpointValue({ base: true, md: false });
   const [newSource, setNewSource] = useState<SourceCreate>({
     name: "",
     url: "",
@@ -382,7 +383,7 @@ export const XpertPanel: FC = () => {
   }
 
   return (
-    <VStack justifyContent="space-between" minH="100vh" p={6} rowGap={4}>
+    <VStack className="xpert-page-shift" justifyContent="space-between" minH="100vh" p={6} rowGap={4}>
       <Box w="full">
         <Header />
 
@@ -441,14 +442,20 @@ export const XpertPanel: FC = () => {
         {/* Sources */}
         <Card mt="4">
           <CardHeader>
-            <Flex justify="space-between" align="center">
+            <Stack
+              direction={{ base: "column", md: "row" }}
+              justify="space-between"
+              align={{ base: "stretch", md: "center" }}
+              spacing={3}
+            >
               <Heading size="md">Subscription Sources</Heading>
-              <HStack>
+              <Flex wrap="wrap" gap={2} justify={{ base: "flex-start", md: "flex-end" }}>
                 <Button
                   leftIcon={<RepeatIcon />}
                   colorScheme="blue"
                   onClick={handleUpdate}
                   isLoading={updating}
+                  size="sm"
                 >
                   Update Now
                 </Button>
@@ -457,61 +464,105 @@ export const XpertPanel: FC = () => {
                   colorScheme="purple"
                   onClick={handleSyncMarzban}
                   isLoading={updating}
+                  size="sm"
                 >
                   Sync to Marzban
                 </Button>
-                <Button colorScheme="green" onClick={onOpen}>
+                <Button colorScheme="green" onClick={onOpen} size="sm">
                   Add Source
                 </Button>
-              </HStack>
-            </Flex>
+              </Flex>
+            </Stack>
           </CardHeader>
           <CardBody>
-            <Table variant="simple">
-              <Thead>
-                <Tr>
-                  <Th>Name</Th>
-                  <Th>URL</Th>
-                  <Th>Configs</Th>
-                  <Th>Success Rate</Th>
-                  <Th>Last Fetched</Th>
-                  <Th>Enabled</Th>
-                  <Th>Actions</Th>
-                </Tr>
-              </Thead>
-              <Tbody>
+            {isMobile ? (
+              <VStack align="stretch" spacing={3}>
                 {sources.map((source) => (
-                  <Tr key={source.id}>
-                    <Td>{source.name}</Td>
-                    <Td fontSize="sm" maxW="300px" isTruncated>
+                  <Box
+                    key={source.id}
+                    borderWidth="1px"
+                    borderColor="gray.200"
+                    _dark={{ borderColor: "gray.600" }}
+                    borderRadius="md"
+                    p={3}
+                  >
+                    <Flex justify="space-between" align="center">
+                      <Text fontWeight="semibold" noOfLines={1}>
+                        {source.name}
+                      </Text>
+                      <HStack>
+                        <Switch
+                          isChecked={source.enabled}
+                          onChange={() => handleToggleSource(source.id)}
+                          size="sm"
+                        />
+                        <IconButton
+                          aria-label="Delete"
+                          icon={<TrashIcon />}
+                          colorScheme="red"
+                          size="xs"
+                          variant="ghost"
+                          onClick={() => handleDeleteSource(source.id)}
+                        />
+                      </HStack>
+                    </Flex>
+                    <Text fontSize="sm" color="gray.600" mt={1} noOfLines={2}>
                       {source.url}
-                    </Td>
-                    <Td>{source.config_count}</Td>
-                    <Td>{source.success_rate.toFixed(1)}%</Td>
-                    <Td fontSize="sm">
-                      {source.last_fetched
-                        ? new Date(source.last_fetched).toLocaleString()
-                        : "Never"}
-                    </Td>
-                    <Td>
-                      <Switch
-                        isChecked={source.enabled}
-                        onChange={() => handleToggleSource(source.id)}
-                      />
-                    </Td>
-                    <Td>
-                      <IconButton
-                        aria-label="Delete"
-                        icon={<TrashIcon />}
-                        colorScheme="red"
-                        size="sm"
-                        onClick={() => handleDeleteSource(source.id)}
-                      />
-                    </Td>
-                  </Tr>
+                    </Text>
+                    <HStack mt={2} spacing={2} wrap="wrap">
+                      <Badge colorScheme="blue">{source.config_count} configs</Badge>
+                      <Badge colorScheme="green">{source.success_rate.toFixed(1)}%</Badge>
+                      <Badge colorScheme="gray">
+                        {source.last_fetched ? new Date(source.last_fetched).toLocaleString() : "Never"}
+                      </Badge>
+                    </HStack>
+                  </Box>
                 ))}
-              </Tbody>
-            </Table>
+              </VStack>
+            ) : (
+              <Box overflowX="auto">
+                <Table variant="simple">
+                  <Thead>
+                    <Tr>
+                      <Th>Name</Th>
+                      <Th>URL</Th>
+                      <Th>Configs</Th>
+                      <Th>Success Rate</Th>
+                      <Th>Last Fetched</Th>
+                      <Th>Enabled</Th>
+                      <Th>Actions</Th>
+                    </Tr>
+                  </Thead>
+                  <Tbody>
+                    {sources.map((source) => (
+                      <Tr key={source.id}>
+                        <Td>{source.name}</Td>
+                        <Td fontSize="sm" maxW="300px" isTruncated>
+                          {source.url}
+                        </Td>
+                        <Td>{source.config_count}</Td>
+                        <Td>{source.success_rate.toFixed(1)}%</Td>
+                        <Td fontSize="sm">
+                          {source.last_fetched ? new Date(source.last_fetched).toLocaleString() : "Never"}
+                        </Td>
+                        <Td>
+                          <Switch isChecked={source.enabled} onChange={() => handleToggleSource(source.id)} />
+                        </Td>
+                        <Td>
+                          <IconButton
+                            aria-label="Delete"
+                            icon={<TrashIcon />}
+                            colorScheme="red"
+                            size="sm"
+                            onClick={() => handleDeleteSource(source.id)}
+                          />
+                        </Td>
+                      </Tr>
+                    ))}
+                  </Tbody>
+                </Table>
+              </Box>
+            )}
           </CardBody>
         </Card>
 
@@ -521,39 +572,81 @@ export const XpertPanel: FC = () => {
             <Heading size="md">Active Configurations ({configs.filter(c => c.is_active).length})</Heading>
           </CardHeader>
           <CardBody>
-            <Table variant="simple" size="sm">
-              <Thead>
-                <Tr>
-                  <Th>Protocol</Th>
-                  <Th>Server</Th>
-                  <Th>Port</Th>
-                  <Th>Remarks</Th>
-                  <Th>Ping</Th>
-                  <Th>Loss</Th>
-                  <Th>Status</Th>
-                </Tr>
-              </Thead>
-              <Tbody>
+            {isMobile ? (
+              <VStack align="stretch" spacing={3}>
                 {configs
                   .filter((c) => c.is_active)
                   .slice(0, 20)
                   .map((config) => (
-                    <Tr key={config.id}>
-                      <Td>{config.protocol.toUpperCase()}</Td>
-                      <Td fontSize="sm">{config.server}</Td>
-                      <Td>{config.port}</Td>
-                      <Td fontSize="sm">{config.remarks}</Td>
-                      <Td>{config.ping_ms.toFixed(0)} ms</Td>
-                      <Td>{config.packet_loss.toFixed(0)}%</Td>
-                      <Td>
-                        <Text color="green.500" fontWeight="bold">
-                          Active
+                    <Box
+                      key={config.id}
+                      borderWidth="1px"
+                      borderColor="gray.200"
+                      _dark={{ borderColor: "gray.600" }}
+                      borderRadius="md"
+                      p={3}
+                    >
+                      <Flex justify="space-between" align="center">
+                        <Text fontWeight="semibold" noOfLines={1}>
+                          {config.remarks || "-"}
                         </Text>
-                      </Td>
-                    </Tr>
+                        <Badge colorScheme="blue">{config.protocol.toUpperCase()}</Badge>
+                      </Flex>
+                      <Text fontSize="sm" color="gray.600" mt={1} noOfLines={1}>
+                        {config.server}:{config.port}
+                      </Text>
+                      <HStack mt={2} justify="space-between">
+                        <Text fontSize="sm">{config.ping_ms.toFixed(0)} ms</Text>
+                        <Text fontSize="sm" color="gray.600">
+                          {config.packet_loss.toFixed(0)}%
+                        </Text>
+                        <Badge colorScheme="green">Active</Badge>
+                      </HStack>
+                    </Box>
                   ))}
-              </Tbody>
-            </Table>
+                {configs.filter((c) => c.is_active).length === 0 && (
+                  <Text textAlign="center" color="gray.500" py={4}>
+                    No active configurations
+                  </Text>
+                )}
+              </VStack>
+            ) : (
+              <Box overflowX="auto">
+                <Table variant="simple" size="sm">
+                  <Thead>
+                    <Tr>
+                      <Th>Remarks</Th>
+                      <Th>Server</Th>
+                      <Th>Port</Th>
+                      <Th>Protocol</Th>
+                      <Th>Ping</Th>
+                      <Th>Loss</Th>
+                      <Th>Status</Th>
+                    </Tr>
+                  </Thead>
+                  <Tbody>
+                    {configs
+                      .filter((c) => c.is_active)
+                      .slice(0, 20)
+                      .map((config) => (
+                        <Tr key={config.id}>
+                          <Td fontSize="sm">{config.remarks}</Td>
+                          <Td fontSize="sm">{config.server}</Td>
+                          <Td>{config.port}</Td>
+                          <Td>{config.protocol.toUpperCase()}</Td>
+                          <Td>{config.ping_ms.toFixed(0)} ms</Td>
+                          <Td>{config.packet_loss.toFixed(0)}%</Td>
+                          <Td>
+                            <Text color="green.500" fontWeight="bold">
+                              Active
+                            </Text>
+                          </Td>
+                        </Tr>
+                      ))}
+                  </Tbody>
+                </Table>
+              </Box>
+            )}
             {configs.filter((c) => c.is_active).length > 20 && (
               <Text mt={2} fontSize="sm" color="gray.500">
                 Showing 20 of {configs.filter((c) => c.is_active).length} active configs

@@ -3,7 +3,7 @@ import { fetch } from "../service/http";
 import { getAuthToken } from "../utils/authStorage";
 import { Dashboard } from "./Dashboard";
 import { XpertPanel } from "./XpertPanel";
-import { TrafficPage } from "./TrafficPage";
+import { AdminManager } from "./AdminManager";
 import { Login } from "./Login";
 
 const fetchAdminLoader = async () => {
@@ -51,10 +51,10 @@ export const router = createHashRouter([
         loader: fetchSudoLoader,
     },
     {
-        path: "/traffic/",
-        element: <TrafficPage />,
+        path: "/admin-manager/",
+        element: <AdminManager />,
         errorElement: <Login />,
-        loader: fetchAdminLoader,
+        loader: fetchSudoLoader,
     },
     {
         path: "/login/",

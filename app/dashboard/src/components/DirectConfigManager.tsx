@@ -42,19 +42,19 @@ import {
   Tab,
   TabPanel,
   Flex,
+  useBreakpointValue,
 } from "@chakra-ui/react";
 import { FC, useEffect, useState } from "react";
-import { TrashIcon, PlusIcon, ArrowPathIcon, EyeIcon, EyeSlashIcon, PencilSquareIcon, ArrowUpIcon, ArrowDownIcon } from "@heroicons/react/24/outline";
+import { TrashIcon, PlusIcon, ArrowPathIcon, PencilSquareIcon, ArrowUpIcon, ArrowDownIcon, Bars3Icon } from "@heroicons/react/24/outline";
 import { fetch } from "../service/http";
 import { getAuthToken } from "../utils/authStorage";
 
 const AddIcon = PlusIcon;
 const RepeatIcon = ArrowPathIcon;
-const EyeOnIcon = EyeIcon;
-const EyeOffIcon = EyeSlashIcon;
 const EditIcon = PencilSquareIcon;
 const ArrowUp = ArrowUpIcon;
 const ArrowDown = ArrowDownIcon;
+const DragHandle = Bars3Icon;
 
 interface DirectConfig {
   id: number;
@@ -107,12 +107,14 @@ export const DirectConfigManager: FC = () => {
   const [editConfig, setEditConfig] = useState<DirectConfigCreate & { id: number } | null>(null);
   const [editValidationResult, setEditValidationResult] = useState<ValidationResult | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
-  const [showRaw, setShowRaw] = useState<{ [key: number]: boolean }>({});
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [movingBatch, setMovingBatch] = useState(false);
   const [deletingBatch, setDeletingBatch] = useState(false);
   const [pingRefreshing, setPingRefreshing] = useState(false);
   const [draggingId, setDraggingId] = useState<number | null>(null);
+  const [dropTargetId, setDropTargetId] = useState<number | null>(null);
+  const [mobileDragActive, setMobileDragActive] = useState(false);
+  const isMobile = useBreakpointValue({ base: true, md: false });
   const toast = useToast();
   
   const singleModal = useDisclosure();
@@ -143,6 +145,118 @@ export const DirectConfigManager: FC = () => {
   useEffect(() => {
     loadConfigs();
   }, []);
+
+  useEffect(() => {
+    const interval = globalThis.setInterval(async () => {
+      try {
+        await globalThis.fetch("/api/xpert/direct-configs/ping-refresh", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${getAuthToken()}` },
+        });
+        await loadConfigs();
+      } catch {
+        // silent
+      }
+    }, 30 * 60 * 1000);
+    return () => globalThis.clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const reorderRequest = async (sourceId: number, targetId: number) => {
+    const response = await globalThis.fetch("/api/xpert/direct-configs/reorder", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${getAuthToken()}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ source_id: sourceId, target_id: targetId }),
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(text || `HTTP ${response.status}`);
+    }
+  };
+
+  useEffect(() => {
+    if (!isMobile || !mobileDragActive || draggingId === null) return;
+
+    const onMove = (e: PointerEvent) => {
+      e.preventDefault();
+      const el = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
+      const card = el?.closest?.("[data-config-id]") as HTMLElement | null;
+      const idStr = card?.dataset?.configId;
+      if (!idStr) return;
+      const id = Number(idStr);
+      if (!Number.isFinite(id)) return;
+      setDropTargetId(id);
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (!e.touches?.[0]) return;
+      e.preventDefault();
+      const t = e.touches[0];
+      const el = document.elementFromPoint(t.clientX, t.clientY) as HTMLElement | null;
+      const card = el?.closest?.("[data-config-id]") as HTMLElement | null;
+      const idStr = card?.dataset?.configId;
+      if (!idStr) return;
+      const id = Number(idStr);
+      if (!Number.isFinite(id)) return;
+      setDropTargetId(id);
+    };
+
+    const finish = async () => {
+      const src = draggingId;
+      const dst = dropTargetId;
+      setMobileDragActive(false);
+      setDraggingId(null);
+      setDropTargetId(null);
+      if (src != null && dst != null && src !== dst) {
+        try {
+          setMovingBatch(true);
+          await reorderRequest(src, dst);
+          await loadConfigs();
+        } catch {
+          // silent
+        } finally {
+          setMovingBatch(false);
+        }
+      }
+    };
+
+    const onUp = () => {
+      void finish();
+    };
+
+    const onTouchEnd = () => {
+      void finish();
+    };
+
+    const onCancel = () => {
+      setMobileDragActive(false);
+      setDraggingId(null);
+      setDropTargetId(null);
+    };
+
+    const prevUserSelect = document.body.style.userSelect;
+    document.body.style.userSelect = "none";
+
+    window.addEventListener("pointermove", onMove, { passive: false });
+    window.addEventListener("pointerup", onUp, { passive: true });
+    window.addEventListener("pointercancel", onCancel, { passive: true });
+    window.addEventListener("touchmove", onTouchMove, { passive: false });
+    window.addEventListener("touchend", onTouchEnd, { passive: true });
+    window.addEventListener("touchcancel", onCancel, { passive: true });
+    return () => {
+      document.body.style.userSelect = prevUserSelect;
+      window.removeEventListener("pointermove", onMove as any);
+      window.removeEventListener("pointerup", onUp as any);
+      window.removeEventListener("pointercancel", onCancel as any);
+      window.removeEventListener("touchmove", onTouchMove as any);
+      window.removeEventListener("touchend", onTouchEnd as any);
+      window.removeEventListener("touchcancel", onCancel as any);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMobile, mobileDragActive, draggingId, dropTargetId]);
 
   const handleValidateConfig = async () => {
     if (!newConfig.raw.trim()) {
@@ -486,10 +600,6 @@ export const DirectConfigManager: FC = () => {
     }
   };
 
-  const toggleShowRaw = (id: number) => {
-    setShowRaw(prev => ({ ...prev, [id]: !prev[id] }));
-  };
-
   const openEditModal = (config: DirectConfig) => {
     setEditConfig({ id: config.id, raw: config.raw, remarks: config.remarks, added_by: config.added_by });
     setEditValidationResult(null);
@@ -701,24 +811,9 @@ export const DirectConfigManager: FC = () => {
       return;
     }
 
-    const currentIndex = configs.findIndex((c) => c.id === draggingId);
-    const targetIndex = configs.findIndex((c) => c.id === targetId);
-    if (currentIndex === -1 || targetIndex === -1) {
-      setDraggingId(null);
-      return;
-    }
-
     try {
       setMovingBatch(true);
-      if (currentIndex < targetIndex) {
-        for (let i = currentIndex; i < targetIndex; i += 1) {
-          await moveConfigRequest(draggingId, "down");
-        }
-      } else if (currentIndex > targetIndex) {
-        for (let i = currentIndex; i > targetIndex; i -= 1) {
-          await moveConfigRequest(draggingId, "up");
-        }
-      }
+      await reorderRequest(draggingId, targetId);
       await loadConfigs();
     } catch (error) {
       toast({
@@ -729,6 +824,7 @@ export const DirectConfigManager: FC = () => {
     } finally {
       setMovingBatch(false);
       setDraggingId(null);
+      setDropTargetId(null);
     }
   };
 
@@ -743,24 +839,24 @@ export const DirectConfigManager: FC = () => {
   return (
     <Card mt="4">
       <CardHeader>
-        <HStack justify="space-between" align="center">
+        <Stack
+          direction={{ base: "column", md: "row" }}
+          justify="space-between"
+          align={{ base: "stretch", md: "center" }}
+          spacing={3}
+        >
           <Heading size="md">
-            Direct Configurations ({configs.filter(c => c.is_active).length} active)
-            <Badge ml={2} colorScheme="green">Bypass Whitelist</Badge>
+            Direct Configurations ({configs.filter((c) => c.is_active).length} active)
+            <Badge ml={2} colorScheme="green">
+              Bypass Whitelist
+            </Badge>
           </Heading>
-          <HStack wrap="wrap" spacing={2}>
-            <Button
-              leftIcon={<AddIcon />}
-              colorScheme="green"
-              onClick={singleModal.onOpen}
-            >
+
+          <Flex wrap="wrap" gap={2} align="center">
+            <Button leftIcon={<AddIcon />} colorScheme="green" onClick={singleModal.onOpen} size="sm">
               Add Single
             </Button>
-            <Button
-              leftIcon={<AddIcon />}
-              colorScheme="blue"
-              onClick={batchModal.onOpen}
-            >
+            <Button leftIcon={<AddIcon />} colorScheme="blue" onClick={batchModal.onOpen} size="sm">
               Add Batch
             </Button>
             <Button
@@ -768,6 +864,7 @@ export const DirectConfigManager: FC = () => {
               variant="outline"
               onClick={handlePingRefresh}
               isLoading={pingRefreshing}
+              size="sm"
             >
               Ping Check
             </Button>
@@ -777,6 +874,7 @@ export const DirectConfigManager: FC = () => {
               onClick={() => handleMoveSelected("up")}
               isDisabled={selectedIds.length === 0 || movingBatch}
               isLoading={movingBatch}
+              size="sm"
             >
               Move Selected Up
             </Button>
@@ -786,6 +884,7 @@ export const DirectConfigManager: FC = () => {
               onClick={() => handleMoveSelected("down")}
               isDisabled={selectedIds.length === 0 || movingBatch}
               isLoading={movingBatch}
+              size="sm"
             >
               Move Selected Down
             </Button>
@@ -796,128 +895,275 @@ export const DirectConfigManager: FC = () => {
               onClick={handleDeleteSelected}
               isDisabled={selectedIds.length === 0 || deletingBatch}
               isLoading={deletingBatch}
+              size="sm"
             >
               Delete Selected
             </Button>
             <Text fontSize="sm" color="gray.500">
               Selected: {selectedIds.length}
             </Text>
-          </HStack>
-        </HStack>
+          </Flex>
+        </Stack>
       </CardHeader>
       <CardBody>
-        <Table variant="simple" size="sm">
-          <Thead>
-            <Tr>
-              <Th>
-                <Checkbox
-                  isChecked={configs.length > 0 && selectedIds.length === configs.length}
-                  isIndeterminate={selectedIds.length > 0 && selectedIds.length < configs.length}
-                  onChange={toggleSelectAll}
-                />
-              </Th>
-              <Th>Status</Th>
-              <Th>Protocol</Th>
-              <Th>Server</Th>
-              <Th>Port</Th>
-              <Th>Remarks</Th>
-              <Th>Ping</Th>
-              <Th>Added</Th>
-              <Th>Actions</Th>
-            </Tr>
-          </Thead>
-          <Tbody>
-            {configs.map((config, index) => (
-              <Tr
-                key={config.id}
-                draggable
-                onDragStart={() => setDraggingId(config.id)}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                }}
-                onDrop={() => handleDropOnConfig(config.id)}
-                onDragEnd={() => setDraggingId(null)}
-                cursor="move"
-                bg={draggingId === config.id ? "blue.50" : undefined}
+        {isMobile ? (
+          <VStack align="stretch" spacing={3}>
+            <HStack justify="space-between">
+              <Checkbox
+                isChecked={configs.length > 0 && selectedIds.length === configs.length}
+                isIndeterminate={selectedIds.length > 0 && selectedIds.length < configs.length}
+                onChange={toggleSelectAll}
               >
-                <Td>
-                  <Checkbox
-                    isChecked={selectedIds.includes(config.id)}
-                    onChange={() => toggleSelectConfig(config.id)}
-                  />
-                </Td>
-                <Td>
-                  <Switch
-                    isChecked={config.is_active}
-                    onChange={() => handleToggleConfig(config.id)}
-                    size="sm"
-                  />
-                </Td>
-                <Td>
-                  <Badge colorScheme="blue">{config.protocol.toUpperCase()}</Badge>
-                </Td>
-                <Td fontSize="sm">{config.server}</Td>
-                <Td>{config.port}</Td>
-                <Td fontSize="sm" maxW="200px" isTruncated>
-                  {config.remarks}
-                </Td>
-                <Td>{config.ping_ms.toFixed(0)} ms</Td>
-                <Td fontSize="sm">
-                  {new Date(config.added_at).toLocaleDateString()}
-                </Td>
-                <Td>
-                  <HStack spacing={1}>
-                    <IconButton
-                      aria-label="Move Up"
-                      icon={<ArrowUp />}
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleMoveConfig(config.id, "up")}
-                      isDisabled={index === 0}
+                Select all
+              </Checkbox>
+              <Text fontSize="sm" color="gray.500">
+                {selectedIds.length} selected
+              </Text>
+            </HStack>
+
+            {configs.map((config, index) => (
+              <Box
+                key={config.id}
+                data-config-id={config.id}
+                borderWidth="1px"
+                borderColor="gray.200"
+                _dark={{ borderColor: "gray.600" }}
+                borderRadius="md"
+                p={3}
+                bg={
+                  mobileDragActive && dropTargetId === config.id && draggingId !== config.id
+                    ? "gray.50"
+                    : undefined
+                }
+                transition="transform 140ms ease, background-color 140ms ease"
+                transform={mobileDragActive && draggingId === config.id ? "scale(0.98)" : undefined}
+              >
+                <Flex justify="space-between" align="center">
+                  <HStack>
+                    <Checkbox
+                      isChecked={selectedIds.includes(config.id)}
+                      onChange={() => toggleSelectConfig(config.id)}
                     />
-                    <IconButton
-                      aria-label="Move Down"
-                      icon={<ArrowDown />}
+                    <Switch
+                      isChecked={config.is_active}
+                      onChange={() => handleToggleConfig(config.id)}
                       size="sm"
-                      variant="outline"
-                      onClick={() => handleMoveConfig(config.id, "down")}
-                      isDisabled={index === configs.length - 1}
-                    />
-                    <IconButton
-                      aria-label="Edit"
-                      icon={<EditIcon />}
-                      size="sm"
-                      variant="outline"
-                      onClick={() => openEditModal(config)}
-                    />
-                    <IconButton
-                      aria-label={showRaw[config.id] ? "Hide" : "Show"}
-                      icon={showRaw[config.id] ? <EyeOffIcon /> : <EyeOnIcon />}
-                      size="sm"
-                      variant="outline"
-                      onClick={() => toggleShowRaw(config.id)}
-                    />
-                    <IconButton
-                      aria-label="Sync to Marzban"
-                      icon={<RepeatIcon />}
-                      size="sm"
-                      colorScheme="purple"
-                      variant="outline"
-                      onClick={() => handleSyncToMarzban(config.id)}
-                    />
-                    <IconButton
-                      aria-label="Delete"
-                      icon={<TrashIcon />}
-                      colorScheme="red"
-                      size="sm"
-                      onClick={() => handleDeleteConfig(config.id)}
                     />
                   </HStack>
-                </Td>
-              </Tr>
+                  <HStack>
+                    <IconButton
+                      aria-label="Drag"
+                      icon={<DragHandle />}
+                      size="xs"
+                      variant="ghost"
+                      isDisabled={movingBatch || deletingBatch}
+                      style={{ touchAction: "none" }}
+                      onPointerDown={(e) => {
+                        e.preventDefault();
+                        (e.currentTarget as any)?.setPointerCapture?.(e.pointerId);
+                        setDraggingId(config.id);
+                        setDropTargetId(config.id);
+                        setMobileDragActive(true);
+                      }}
+                      onTouchStart={(e) => {
+                        e.preventDefault();
+                        setDraggingId(config.id);
+                        setDropTargetId(config.id);
+                        setMobileDragActive(true);
+                      }}
+                    />
+                    <Badge colorScheme="blue">{config.protocol.toUpperCase()}</Badge>
+                  </HStack>
+                </Flex>
+
+                <Text mt={2} fontWeight="semibold" noOfLines={1}>
+                  {config.remarks || "-"}
+                </Text>
+                <Text fontSize="sm" color="gray.600" noOfLines={1}>
+                  {config.server}:{config.port}
+                </Text>
+                <HStack mt={2} justify="space-between">
+                  <Text fontSize="sm">{config.ping_ms.toFixed(0)} ms</Text>
+                  <Text fontSize="sm" color="gray.500">
+                    {new Date(config.added_at).toLocaleDateString()}
+                  </Text>
+                </HStack>
+
+                <Flex mt={3} wrap="wrap" gap={1}>
+                  <IconButton
+                    aria-label="Move Up"
+                    icon={<ArrowUp />}
+                    size="xs"
+                    variant="ghost"
+                    onClick={() => handleMoveConfig(config.id, "up")}
+                    isDisabled={index === 0}
+                  />
+                  <IconButton
+                    aria-label="Move Down"
+                    icon={<ArrowDown />}
+                    size="xs"
+                    variant="ghost"
+                    onClick={() => handleMoveConfig(config.id, "down")}
+                    isDisabled={index === configs.length - 1}
+                  />
+                  <IconButton
+                    aria-label="Edit"
+                    icon={<EditIcon />}
+                    size="xs"
+                    variant="ghost"
+                    onClick={() => openEditModal(config)}
+                  />
+                  <IconButton
+                    aria-label="Sync to Marzban"
+                    icon={<RepeatIcon />}
+                    size="xs"
+                    colorScheme="purple"
+                    variant="ghost"
+                    onClick={() => handleSyncToMarzban(config.id)}
+                  />
+                  <IconButton
+                    aria-label="Delete"
+                    icon={<TrashIcon />}
+                    colorScheme="red"
+                    size="xs"
+                    variant="ghost"
+                    onClick={() => handleDeleteConfig(config.id)}
+                  />
+                </Flex>
+              </Box>
             ))}
-          </Tbody>
-        </Table>
+          </VStack>
+        ) : (
+          <Box overflowX="auto">
+            <Table variant="simple" size="sm">
+              <Thead>
+                <Tr>
+                  <Th>
+                    <Checkbox
+                      isChecked={configs.length > 0 && selectedIds.length === configs.length}
+                      isIndeterminate={selectedIds.length > 0 && selectedIds.length < configs.length}
+                      onChange={toggleSelectAll}
+                    />
+                  </Th>
+                  <Th>Status</Th>
+                  <Th>Remarks</Th>
+                  <Th>Server</Th>
+                  <Th>Port</Th>
+                  <Th>Protocol</Th>
+                  <Th>Ping</Th>
+                  <Th>Added</Th>
+                  <Th>Actions</Th>
+                </Tr>
+              </Thead>
+              <Tbody>
+                {configs.map((config, index) => (
+                  <Tr
+                    key={config.id}
+                    draggable
+                    onDragStart={(e) => {
+                      setDraggingId(config.id);
+                      setDropTargetId(config.id);
+                      e.dataTransfer.setData("text/plain", String(config.id));
+                      e.dataTransfer.effectAllowed = "move";
+                    }}
+                    onDragEnter={() => {
+                      if (draggingId !== null) setDropTargetId(config.id);
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = "move";
+                      if (draggingId !== null) setDropTargetId(config.id);
+                    }}
+                    onDrop={() => {
+                      setDropTargetId(null);
+                      handleDropOnConfig(config.id);
+                    }}
+                    onDragEnd={() => {
+                      setDraggingId(null);
+                      setDropTargetId(null);
+                    }}
+                    cursor="move"
+                    transition="background-color 120ms ease, opacity 120ms ease"
+                    opacity={draggingId === config.id ? 0.6 : 1}
+                    bg={
+                      draggingId === config.id
+                        ? "blue.50"
+                        : dropTargetId === config.id && draggingId !== null
+                        ? "gray.50"
+                        : undefined
+                    }
+                  >
+                    <Td>
+                      <Checkbox
+                        isChecked={selectedIds.includes(config.id)}
+                        onChange={() => toggleSelectConfig(config.id)}
+                      />
+                    </Td>
+                    <Td>
+                      <Switch
+                        isChecked={config.is_active}
+                        onChange={() => handleToggleConfig(config.id)}
+                        size="sm"
+                      />
+                    </Td>
+                    <Td fontSize="sm" maxW="200px" isTruncated>
+                      {config.remarks}
+                    </Td>
+                    <Td fontSize="sm">{config.server}</Td>
+                    <Td>{config.port}</Td>
+                    <Td>
+                      <Badge colorScheme="blue">{config.protocol.toUpperCase()}</Badge>
+                    </Td>
+                    <Td>{config.ping_ms.toFixed(0)} ms</Td>
+                    <Td fontSize="sm">{new Date(config.added_at).toLocaleDateString()}</Td>
+                    <Td>
+                      <HStack spacing={1}>
+                          <IconButton
+                            aria-label="Move Up"
+                            icon={<ArrowUp />}
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleMoveConfig(config.id, "up")}
+                            isDisabled={index === 0}
+                          />
+                          <IconButton
+                            aria-label="Move Down"
+                            icon={<ArrowDown />}
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleMoveConfig(config.id, "down")}
+                            isDisabled={index === configs.length - 1}
+                          />
+                        <IconButton
+                          aria-label="Edit"
+                          icon={<EditIcon />}
+                          size="sm"
+                          variant="outline"
+                          onClick={() => openEditModal(config)}
+                        />
+                        <IconButton
+                          aria-label="Sync to Marzban"
+                          icon={<RepeatIcon />}
+                          size="sm"
+                          colorScheme="purple"
+                          variant="outline"
+                          onClick={() => handleSyncToMarzban(config.id)}
+                        />
+                        <IconButton
+                          aria-label="Delete"
+                          icon={<TrashIcon />}
+                          colorScheme="red"
+                          size="sm"
+                          onClick={() => handleDeleteConfig(config.id)}
+                        />
+                      </HStack>
+                    </Td>
+                  </Tr>
+                ))}
+              </Tbody>
+            </Table>
+          </Box>
+        )}
 
         {configs.length === 0 && (
           <Text textAlign="center" color="gray.500" py={8}>
@@ -925,27 +1171,6 @@ export const DirectConfigManager: FC = () => {
           </Text>
         )}
 
-        {/* Show raw configs */}
-        {Object.keys(showRaw).some(id => showRaw[parseInt(id)]) && (
-          <Box mt={4}>
-            <Divider mb={4} />
-            <Heading size="sm" mb={2}>Raw Configurations</Heading>
-            <VStack spacing={2} align="stretch">
-              {configs
-                .filter(config => showRaw[config.id])
-                .map(config => (
-                  <Box key={config.id} p={3} bg="gray.50" borderRadius="md">
-                    <Text fontSize="xs" color="gray.600" mb={1}>
-                      {config.protocol.toUpperCase()}://{config.server}:{config.port}
-                    </Text>
-                    <Text fontSize="xs" fontFamily="mono" wordBreak="break-all">
-                      {config.raw}
-                    </Text>
-                  </Box>
-                ))}
-            </VStack>
-          </Box>
-        )}
       </CardBody>
 
       {/* Single Config Modal */}

@@ -18,7 +18,7 @@ import {
 } from "@chakra-ui/react";
 import { useTranslation } from "react-i18next";
 import { fetch } from "service/http";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useDashboard } from "../contexts/DashboardContext";
 
 export function CryptoLinkModal() {
@@ -31,6 +31,7 @@ export function CryptoLinkModal() {
   const [resetUsername, setResetUsername] = useState("");
   const [isResetting, setIsResetting] = useState(false);
   const [encrypted, setEncrypted] = useState("");
+  const [isSudo, setIsSudo] = useState<boolean>(true);
   const { onCopy, hasCopied } = useClipboard(encrypted);
 
   const onClose = () => {
@@ -42,6 +43,21 @@ export function CryptoLinkModal() {
     setIsResetting(false);
     setEncrypted("");
   };
+
+  useEffect(() => {
+    if (!isEditingCrypto) return;
+    fetch("/admin")
+      .then((a: any) => {
+        const sudo = !!a?.is_sudo;
+        setIsSudo(sudo);
+        if (!sudo && hwidLimit && hwidLimit !== "1") {
+          setHwidLimit("1");
+        }
+      })
+      .catch(() => {
+        setIsSudo(true);
+      });
+  }, [isEditingCrypto]);
 
   const onResetHwid = async () => {
     try {
@@ -127,10 +143,10 @@ export function CryptoLinkModal() {
             <Select value={hwidLimit} onChange={(e) => setHwidLimit(e.target.value)}>
               <option value="">{t("cryptoLink.hwidLimitPlaceholder")}</option>
               <option value="1">1</option>
-              <option value="2">2</option>
-              <option value="3">3</option>
-              <option value="4">4</option>
-              <option value="5">5</option>
+              {isSudo ? <option value="2">2</option> : null}
+              {isSudo ? <option value="3">3</option> : null}
+              {isSudo ? <option value="4">4</option> : null}
+              {isSudo ? <option value="5">5</option> : null}
             </Select>
           </FormControl>
           <FormControl mt={4}>

@@ -33,6 +33,25 @@ export const StatusBadge: FC<UserStatusProps> = ({
         py={1}
         columnGap={compact ? 1 : 2}
         alignItems="center"
+        _dark={
+          userStatus === "active" || userStatus === "connected"
+            ? {
+                bg: "rgba(34,197,94,0.14)",
+                color: "#86efac",
+                border: "1px solid rgba(74,222,128,0.35)",
+                boxShadow:
+                  "0 0 4px rgba(74,222,128,0.34), 0 0 10px rgba(34,197,94,0.2)",
+              }
+            : userStatus === "expired"
+            ? {
+                bg: "rgba(251,146,60,0.14)",
+                color: "#fdba74",
+                border: "1px solid rgba(251,146,60,0.35)",
+                boxShadow:
+                  "0 0 4px rgba(251,146,60,0.34), 0 0 10px rgba(249,115,22,0.2)",
+              }
+            : undefined
+        }
       >
         <Icon w={compact ? 3 : 4} />
         {showDetail && (

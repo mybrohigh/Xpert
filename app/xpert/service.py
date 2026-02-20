@@ -89,7 +89,22 @@ class XpertService:
     
     def delete_source(self, source_id: int) -> bool:
         """Удаление источника"""
-        return storage.delete_source(source_id)
+        deleted = storage.delete_source(source_id)
+        if not deleted:
+            return False
+        # Re-sync with remaining enabled sources so Active Configurations and
+        # generated subscriptions are immediately consistent.
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                loop.create_task(self.update_subscription())
+            else:
+                loop.run_until_complete(self.update_subscription())
+        except RuntimeError:
+            asyncio.run(self.update_subscription())
+        except Exception as e:
+            logger.warning(f"Failed to refresh after deleting source {source_id}: {e}")
+        return True
     
     def get_active_configs(self) -> List[AggregatedConfig]:
         """Получение активных конфигураций"""
@@ -105,6 +120,9 @@ class XpertService:
         
         if not sources:
             logger.warning("No enabled sources found")
+            # If there are no enabled sources, clear aggregated source configs.
+            # Direct Configurations are stored separately and are not touched.
+            storage.clear_configs()
             return {"active_configs": 0, "total_configs": 0}
         
         all_configs = []
@@ -165,11 +183,8 @@ class XpertService:
         try:
             sync_result = marzban_integration.sync_active_configs_to_marzban()
             logger.info(f"Marzban sync result: {sync_result}")
-            
-            # Очистка неактивных хостов
-            cleanup_result = marzban_integration.cleanup_inactive_hosts(all_configs)
-            logger.info(f"Marzban cleanup result: {cleanup_result}")
-            
+            # NOTE: do not cleanup hosts globally here.
+            # Cleanup removed user-created and non-Xpert hosts unexpectedly.
         except Exception as e:
             logger.error(f"Marzban integration failed: {e}")
         

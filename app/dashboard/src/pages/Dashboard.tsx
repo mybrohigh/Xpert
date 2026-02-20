@@ -34,8 +34,22 @@ export const Dashboard: FC = () => {
     
     return () => clearTimeout(timer);
   }, []);
+  useEffect(() => {
+    const body = document.body;
+    const onScroll = () => {
+      if (window.scrollY > 16) body.classList.add("xpert-scrolled");
+      else body.classList.remove("xpert-scrolled");
+    };
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      body.classList.remove("xpert-scrolled");
+    };
+  }, []);
+
   return (
-    <VStack justifyContent="space-between" minH="100vh" p="6" rowGap={4}>
+    <VStack className="xpert-page-shift" justifyContent="space-between" minH="100vh" p="6" rowGap={4}>
       <Box w="full">
         <Header />
         <Statistics mt="4" />

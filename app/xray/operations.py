@@ -1,5 +1,6 @@
 from functools import lru_cache
-from typing import TYPE_CHECKING
+import time
+from typing import TYPE_CHECKING, Optional, Tuple
 
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -30,59 +31,199 @@ def get_tls():
 
 @threaded_function
 def _add_user_to_inbound(api: XRayAPI, inbound_tag: str, account: Account):
-    try:
-        api.add_inbound_user(tag=inbound_tag, user=account, timeout=30)
-    except (xray.exc.EmailExistsError, xray.exc.ConnectionError):
-        pass
+    for attempt in range(3):
+        try:
+            api.add_inbound_user(tag=inbound_tag, user=account, timeout=30)
+            return
+        except xray.exc.EmailExistsError:
+            return
+        except xray.exc.ConnectionError as exc:
+            if attempt >= 2:
+                logger.error(
+                    f'Xray add_inbound_user failed after retries tag="{inbound_tag}" '
+                    f'email="{account.email}" err="{exc}"'
+                )
+                return
+            time.sleep(0.2 * (attempt + 1))
+        except Exception as exc:
+            logger.error(
+                f'Xray add_inbound_user unexpected error tag="{inbound_tag}" '
+                f'email="{account.email}" err="{exc}"'
+            )
+            return
 
 
 @threaded_function
 def _remove_user_from_inbound(api: XRayAPI, inbound_tag: str, email: str):
-    try:
-        api.remove_inbound_user(tag=inbound_tag, email=email, timeout=30)
-    except (xray.exc.EmailNotFoundError, xray.exc.ConnectionError):
-        pass
+    for attempt in range(3):
+        try:
+            api.remove_inbound_user(tag=inbound_tag, email=email, timeout=30)
+            return
+        except xray.exc.EmailNotFoundError:
+            return
+        except xray.exc.ConnectionError as exc:
+            if attempt >= 2:
+                logger.error(
+                    f'Xray remove_inbound_user failed after retries tag="{inbound_tag}" '
+                    f'email="{email}" err="{exc}"'
+                )
+                return
+            time.sleep(0.2 * (attempt + 1))
+        except Exception as exc:
+            logger.error(
+                f'Xray remove_inbound_user unexpected error tag="{inbound_tag}" '
+                f'email="{email}" err="{exc}"'
+            )
+            return
 
 
 @threaded_function
 def _alter_inbound_user(api: XRayAPI, inbound_tag: str, account: Account):
+    for attempt in range(3):
+        try:
+            api.remove_inbound_user(tag=inbound_tag, email=account.email, timeout=30)
+            break
+        except xray.exc.EmailNotFoundError:
+            break
+        except xray.exc.ConnectionError as exc:
+            if attempt >= 2:
+                logger.error(
+                    f'Xray alter_inbound_user(remove) failed after retries tag="{inbound_tag}" '
+                    f'email="{account.email}" err="{exc}"'
+                )
+                return
+            time.sleep(0.2 * (attempt + 1))
+        except Exception as exc:
+            logger.error(
+                f'Xray alter_inbound_user(remove) unexpected error tag="{inbound_tag}" '
+                f'email="{account.email}" err="{exc}"'
+            )
+            return
+
+    for attempt in range(3):
+        try:
+            api.add_inbound_user(tag=inbound_tag, user=account, timeout=30)
+            return
+        except xray.exc.EmailExistsError:
+            return
+        except xray.exc.ConnectionError as exc:
+            if attempt >= 2:
+                logger.error(
+                    f'Xray alter_inbound_user(add) failed after retries tag="{inbound_tag}" '
+                    f'email="{account.email}" err="{exc}"'
+                )
+                return
+            time.sleep(0.2 * (attempt + 1))
+        except Exception as exc:
+            logger.error(
+                f'Xray alter_inbound_user(add) unexpected error tag="{inbound_tag}" '
+                f'email="{account.email}" err="{exc}"'
+            )
+            return
+
+
+def _build_account(user: UserResponse, proxy_type, email: str, inbound: dict):
+    proxy_obj = user.proxies.get(proxy_type)
+    if proxy_obj is None:
+        logger.warning(
+            f'Skipping xray user sync: proxy settings missing for "{proxy_type}" email="{email}"'
+        )
+        return None
+
+    proxy_settings = proxy_obj.dict(no_obj=True)
+    account = proxy_type.account_model(email=email, **proxy_settings)
+
+    # XTLS currently only supports transmission methods of TCP and mKCP
+    if getattr(account, 'flow', None) and (
+        inbound.get('network', 'tcp') not in ('tcp', 'kcp')
+        or
+        (
+            inbound.get('network', 'tcp') in ('tcp', 'kcp')
+            and
+            inbound.get('tls') not in ('tls', 'reality')
+        )
+        or
+        inbound.get('header_type') == 'http'
+    ):
+        account.flow = XTLSFlows.NONE
+
+    return account
+
+
+def _username_from_dbuser(dbuser) -> Optional[str]:
     try:
-        api.remove_inbound_user(tag=inbound_tag, email=account.email, timeout=30)
-    except (xray.exc.EmailNotFoundError, xray.exc.ConnectionError):
+        username = getattr(dbuser, "username", None)
+        if username:
+            return str(username)
+    except Exception:
         pass
+    return None
+
+
+def _materialize_user_for_sync(dbuser_or_username) -> Tuple[Optional[UserResponse], Optional[str]]:
+    """
+    Build a stable user snapshot for xray sync.
+    Handles detached SQLAlchemy objects by reloading user from DB by username.
+    """
+    # Fast path: username passed explicitly.
+    if isinstance(dbuser_or_username, str):
+        username = dbuser_or_username.strip()
+        if not username:
+            return None, None
+        with GetDB() as db:
+            fresh = crud.get_user(db, username)
+            if not fresh:
+                logger.warning(f'Xray sync skipped: user "{username}" not found')
+                return None, None
+            user = UserResponse.model_validate(fresh)
+            email = f"{fresh.id}.{fresh.username}"
+            return user, email
+
+    # Attempt to materialize directly (works for attached objects).
     try:
-        api.add_inbound_user(tag=inbound_tag, user=account, timeout=30)
-    except (xray.exc.EmailExistsError, xray.exc.ConnectionError):
-        pass
+        user = UserResponse.model_validate(dbuser_or_username)
+        email = f"{dbuser_or_username.id}.{dbuser_or_username.username}"
+        return user, email
+    except Exception:
+        username = _username_from_dbuser(dbuser_or_username)
+        if not username:
+            logger.exception("Xray sync failed: cannot resolve username from detached user object")
+            return None, None
+
+        # Detached object fallback: reload user in fresh DB session.
+        with GetDB() as db:
+            fresh = crud.get_user(db, username)
+            if not fresh:
+                logger.warning(f'Xray sync skipped: detached user "{username}" no longer exists')
+                return None, None
+            try:
+                user = UserResponse.model_validate(fresh)
+                email = f"{fresh.id}.{fresh.username}"
+                return user, email
+            except Exception:
+                logger.exception(f'Xray sync failed while materializing user "{username}"')
+                return None, None
 
 
 def add_user(dbuser: "DBUser"):
-    user = UserResponse.model_validate(dbuser)
-    email = f"{dbuser.id}.{dbuser.username}"
+    user, email = _materialize_user_for_sync(dbuser)
+    if not user or not email:
+        return
 
     for proxy_type, inbound_tags in user.inbounds.items():
         for inbound_tag in inbound_tags:
             inbound = xray.config.inbounds_by_tag.get(inbound_tag, {})
 
             try:
-                proxy_settings = user.proxies[proxy_type].dict(no_obj=True)
-            except KeyError:
-                pass
-            account = proxy_type.account_model(email=email, **proxy_settings)
-
-            # XTLS currently only supports transmission methods of TCP and mKCP
-            if getattr(account, 'flow', None) and (
-                inbound.get('network', 'tcp') not in ('tcp', 'kcp')
-                or
-                (
-                    inbound.get('network', 'tcp') in ('tcp', 'kcp')
-                    and
-                    inbound.get('tls') not in ('tls', 'reality')
+                account = _build_account(user, proxy_type, email, inbound)
+            except Exception as exc:
+                logger.error(
+                    f'Failed to build xray account tag="{inbound_tag}" '
+                    f'proxy_type="{proxy_type}" email="{email}" err="{exc}"'
                 )
-                or
-                inbound.get('header_type') == 'http'
-            ):
-                account.flow = XTLSFlows.NONE
+                continue
+            if account is None:
+                continue
 
             _add_user_to_inbound(xray.api, inbound_tag, account)  # main core
             for node in list(xray.nodes.values()):
@@ -101,8 +242,9 @@ def remove_user(dbuser: "DBUser"):
 
 
 def update_user(dbuser: "DBUser"):
-    user = UserResponse.model_validate(dbuser)
-    email = f"{dbuser.id}.{dbuser.username}"
+    user, email = _materialize_user_for_sync(dbuser)
+    if not user or not email:
+        return
 
     active_inbounds = []
     for proxy_type, inbound_tags in user.inbounds.items():
@@ -111,24 +253,15 @@ def update_user(dbuser: "DBUser"):
             inbound = xray.config.inbounds_by_tag.get(inbound_tag, {})
 
             try:
-                proxy_settings = user.proxies[proxy_type].dict(no_obj=True)
-            except KeyError:
-                pass
-            account = proxy_type.account_model(email=email, **proxy_settings)
-
-            # XTLS currently only supports transmission methods of TCP and mKCP
-            if getattr(account, 'flow', None) and (
-                inbound.get('network', 'tcp') not in ('tcp', 'kcp')
-                or
-                (
-                    inbound.get('network', 'tcp') in ('tcp', 'kcp')
-                    and
-                    inbound.get('tls') not in ('tls', 'reality')
+                account = _build_account(user, proxy_type, email, inbound)
+            except Exception as exc:
+                logger.error(
+                    f'Failed to build xray account tag="{inbound_tag}" '
+                    f'proxy_type="{proxy_type}" email="{email}" err="{exc}"'
                 )
-                or
-                inbound.get('header_type') == 'http'
-            ):
-                account.flow = XTLSFlows.NONE
+                continue
+            if account is None:
+                continue
 
             _alter_inbound_user(xray.api, inbound_tag, account)  # main core
             for node in list(xray.nodes.values()):

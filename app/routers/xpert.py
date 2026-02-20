@@ -3,6 +3,9 @@ from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 from typing import List, Optional
 import requests
+import json
+from datetime import datetime, timedelta
+import redis
 
 from app.xpert.service import xpert_service
 from app.xpert.marzban_integration import marzban_integration
@@ -20,12 +23,62 @@ from app.xpert.ip_limit_service import (
     get_unique_ip_limit_for_username,
     set_unique_ip_limit_for_username,
 )
+from app.xpert.v2box_hwid_service import (
+    clear_v2box_for_username,
+    get_required_v2box_device_id_for_username,
+    set_v2box_settings_for_username,
+)
+from app.xpert.admin_user_traffic_limit_service import (
+    get_admin_user_traffic_limit_bytes,
+    set_admin_user_traffic_limit_bytes,
+)
 from app.models.admin import Admin
 from app.db import Session, crud, get_db
 import config
-from app import logger
+from app import logger, xray
 
 router = APIRouter(prefix="/xpert", tags=["Xpert Panel"])
+
+_redis_client = None
+
+
+def _get_redis_client():
+    global _redis_client
+    if _redis_client is not None:
+        return _redis_client
+    try:
+        url = (getattr(config, "XPERT_REDIS_URL", "") or "").strip()
+        if not url:
+            return None
+        _redis_client = redis.from_url(url, decode_responses=True, socket_timeout=0.3)
+        _redis_client.ping()
+        return _redis_client
+    except Exception:
+        _redis_client = None
+        return None
+
+
+def _cache_get_json(key: str):
+    client = _get_redis_client()
+    if not client:
+        return None
+    try:
+        raw = client.get(key)
+        if not raw:
+            return None
+        return json.loads(raw)
+    except Exception:
+        return None
+
+
+def _cache_set_json(key: str, value, ttl_seconds: int):
+    client = _get_redis_client()
+    if not client:
+        return
+    try:
+        client.setex(key, max(1, int(ttl_seconds)), json.dumps(value, ensure_ascii=False))
+    except Exception:
+        return
 
 
 class SourceCreate(BaseModel):
@@ -83,6 +136,11 @@ class DirectConfigBatchMove(BaseModel):
     direction: str
 
 
+class DirectConfigReorder(BaseModel):
+    source_id: int
+    target_id: int
+
+
 class TargetIPsUpdate(BaseModel):
     target_ips: List[str]
 
@@ -102,6 +160,57 @@ class UniqueIPLimitRequest(BaseModel):
     limit: Optional[int] = None
 
 
+class V2BoxHWIDLimitRequest(BaseModel):
+    username: str
+    device_id: Optional[str] = None
+
+
+class V2BoxHWIDResetRequest(BaseModel):
+    username: str
+
+
+class AdminUserTrafficLimitRequest(BaseModel):
+    admin_username: str
+    limit_bytes: Optional[int] = None
+
+
+class AdminActionLogItem(BaseModel):
+    id: int
+    created_at: str
+    admin_username: str
+    action: str
+    target_type: Optional[str] = None
+    target_username: Optional[str] = None
+    meta: Optional[dict] = None
+
+
+class AdminSummaryItem(BaseModel):
+    username: str
+    is_sudo: bool
+    total_users: int
+    actions_24h: int
+
+
+class AdminManagerActionsResponse(BaseModel):
+    total: int
+    items: List[AdminActionLogItem]
+
+
+class AdminLifetimeUserItem(BaseModel):
+    username: str
+    count: int
+    last_at: str
+
+
+class AdminLifetimeStatsResponse(BaseModel):
+    created_count: int
+    extended_count: int
+    deleted_count: int
+    created_users: List[AdminLifetimeUserItem]
+    extended_users: List[AdminLifetimeUserItem]
+    deleted_users: List[AdminLifetimeUserItem]
+
+
 class DirectConfigResponse(BaseModel):
     id: int
     raw: str
@@ -117,6 +226,13 @@ class DirectConfigResponse(BaseModel):
     auto_sync_to_marzban: bool
     added_at: str
     added_by: str
+
+
+def _effective_admin_is_sudo(db: Session, admin: Admin) -> bool:
+    dbadmin = crud.get_admin(db, getattr(admin, "username", ""))
+    if dbadmin is not None:
+        return bool(getattr(dbadmin, "is_sudo", False))
+    return bool(getattr(admin, "is_sudo", False))
 
 
 @router.get("/whitelists")
@@ -851,6 +967,18 @@ async def move_direct_configs_batch(data: DirectConfigBatchMove, admin: Admin = 
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.post("/direct-configs/reorder")
+async def reorder_direct_config(data: DirectConfigReorder, admin: Admin = Depends(Admin.get_current)):
+    """Перетаскивание (drag&drop): переставить source_id на позицию target_id одним запросом."""
+    try:
+        configs = direct_config_service.reorder_config(data.source_id, data.target_id)
+        if configs is None:
+            raise HTTPException(status_code=404, detail="Direct config not found")
+        return {"message": "Direct config reordered", "total": len(configs)}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.delete("/direct-configs/{config_id}")
 async def delete_direct_config(config_id: int, admin: Admin = Depends(Admin.get_current)):
     """Удаление прямой конфигурации"""
@@ -1135,6 +1263,19 @@ async def create_crypto_link(
         if hwid_limit is not None and not (1 <= int(hwid_limit) <= 5):
             raise HTTPException(status_code=400, detail="HWID limit must be in range 1..5")
 
+        # Mark HWID-mode links so main panel raw /sub remains unaffected.
+        if hwid_value or (hwid_limit is not None):
+            try:
+                from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+                parts = urlsplit(payload["url"])
+                q = dict(parse_qsl(parts.query, keep_blank_values=True))
+                q["xpert_hwid"] = "1"
+                payload["url"] = urlunsplit(
+                    (parts.scheme, parts.netloc, parts.path, urlencode(q, doseq=True), parts.fragment)
+                )
+            except Exception:
+                pass
+
         # For HWID options we must be able to parse and validate THIS panel /sub token.
         username_from_url = None
         if hwid_value or (hwid_limit is not None) or (not admin.is_sudo):
@@ -1157,6 +1298,10 @@ async def create_crypto_link(
             if not dbuser or not getattr(dbuser, "admin", None) or dbuser.admin.username != admin.username:
                 raise HTTPException(status_code=403, detail="You are not allowed")
 
+            # sudo=n: HWID device limit is fixed to 1.
+            if hwid_limit is not None and int(hwid_limit) != 1:
+                raise HTTPException(status_code=403, detail="For non-sudo admins HWID device limit can only be 1")
+
         # Apply HWID options (sudo=y or allowed sudo=n only)
         if hwid_value:
             username = set_required_hwid_for_subscription_url(payload["url"], hwid_value)
@@ -1168,6 +1313,26 @@ async def create_crypto_link(
             username = set_hwid_limit_for_subscription_url(payload["url"], int(hwid_limit), hwid_value)
             if not username:
                 raise HTTPException(status_code=400, detail="HWID limit mode requires a valid Marzban /sub URL")
+
+        # Audit log (do not store full URL/token).
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(payload["url"])
+            crud.create_admin_action_log(
+                db=db,
+                admin=(crud.get_admin(db, admin.username) or admin),
+                action="crypto.encrypt",
+                target_type="subscription",
+                target_username=username_from_url,
+                meta={
+                    "host": parsed.netloc,
+                    "path": parsed.path[:64],
+                    "hwid": bool(hwid_value),
+                    "hwid_limit": int(hwid_limit) if hwid_limit is not None else None,
+                },
+            )
+        except Exception:
+            pass
 
         resp = requests.post("https://crypto.happ.su/api-v2.php", json=payload, timeout=15)
         resp.raise_for_status()
@@ -1198,6 +1363,7 @@ async def create_crypto_link(
 async def reset_hwid_binding(
     data: HWIDResetRequest,
     admin: Admin = Depends(Admin.get_current),
+    db: Session = Depends(get_db),
 ):
     """
     Clears stored HWID lock/limit for a user.
@@ -1208,6 +1374,17 @@ async def reset_hwid_binding(
         raise HTTPException(status_code=400, detail="username is required")
 
     cleared = clear_hwid_lock_for_username(username)
+    try:
+        crud.create_admin_action_log(
+            db=db,
+            admin=(crud.get_admin(db, admin.username) or admin),
+            action="hwid.reset",
+            target_type="user",
+            target_username=username,
+            meta={"cleared": bool(cleared)},
+        )
+    except Exception:
+        pass
     return {"cleared": bool(cleared)}
 
 
@@ -1228,17 +1405,29 @@ async def get_unique_ip_limit(
     dbuser = crud.get_user(db, username)
     if not dbuser:
         raise HTTPException(status_code=404, detail="User not found")
-    if not admin.is_sudo:
+    admin_is_sudo = _effective_admin_is_sudo(db, admin)
+    if not admin_is_sudo:
         if not getattr(dbuser, "admin", None) or dbuser.admin.username != admin.username:
             raise HTTPException(status_code=403, detail="You are not allowed")
 
     limit = get_unique_ip_limit_for_username(username)
+    max_limit = 5 if admin_is_sudo else 3
     return {
         "username": username,
         "limit": int(limit),
         "window_seconds": int(WINDOW_SECONDS_DEFAULT),
         "default_limit": int(DEFAULT_UNIQUE_IP_LIMIT),
+        "max_limit": int(max_limit),
     }
+
+
+@router.get("/ip-limit-cap")
+async def get_unique_ip_limit_cap(
+    admin: Admin = Depends(Admin.get_current),
+    db: Session = Depends(get_db),
+):
+    admin_is_sudo = _effective_admin_is_sudo(db, admin)
+    return {"max_limit": 5 if admin_is_sudo else 3}
 
 
 @router.post("/ip-limit")
@@ -1258,11 +1447,13 @@ async def set_unique_ip_limit(
     dbuser = crud.get_user(db, username)
     if not dbuser:
         raise HTTPException(status_code=404, detail="User not found")
-    if not admin.is_sudo:
+    admin_is_sudo = _effective_admin_is_sudo(db, admin)
+    if not admin_is_sudo:
         if not getattr(dbuser, "admin", None) or dbuser.admin.username != admin.username:
             raise HTTPException(status_code=403, detail="You are not allowed")
 
     limit = data.limit
+    max_limit = 5 if admin_is_sudo else 3
     if limit is not None:
         try:
             limit = int(limit)
@@ -1270,11 +1461,395 @@ async def set_unique_ip_limit(
             raise HTTPException(status_code=400, detail="limit must be an integer")
         if limit < 1:
             raise HTTPException(status_code=400, detail="limit must be >= 1")
+        if limit > max_limit:
+            raise HTTPException(
+                status_code=400,
+                detail=f"limit must be <= {max_limit}",
+            )
 
     set_unique_ip_limit_for_username(username, limit)
+    try:
+        crud.create_admin_action_log(
+            db=db,
+            admin=(crud.get_admin(db, admin.username) or admin),
+            action="user.ip_limit_set",
+            target_type="user",
+            target_username=username,
+            meta={"limit": int(get_unique_ip_limit_for_username(username))},
+        )
+    except Exception:
+        pass
     return {
         "username": username,
         "limit": int(get_unique_ip_limit_for_username(username)),
         "window_seconds": int(WINDOW_SECONDS_DEFAULT),
         "default_limit": int(DEFAULT_UNIQUE_IP_LIMIT),
+        "max_limit": int(max_limit),
     }
+
+
+@router.get("/v2box-hwid/{username}")
+async def get_v2box_hwid_limit(
+    username: str,
+    admin: Admin = Depends(Admin.get_current),
+    db: Session = Depends(get_db),
+):
+    username = (username or "").strip()
+    if not username:
+        raise HTTPException(status_code=400, detail="username is required")
+
+    dbuser = crud.get_user(db, username)
+    if not dbuser:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not admin.is_sudo:
+        if not getattr(dbuser, "admin", None) or dbuser.admin.username != admin.username:
+            raise HTTPException(status_code=403, detail="You are not allowed")
+
+    return {
+        "username": username,
+        "limit": None,
+        "device_id": get_required_v2box_device_id_for_username(username),
+        "max_limit": None,
+    }
+
+
+@router.post("/v2box-hwid")
+async def set_v2box_hwid_limit(
+    data: V2BoxHWIDLimitRequest,
+    admin: Admin = Depends(Admin.get_current),
+    db: Session = Depends(get_db),
+):
+    username = (data.username or "").strip()
+    if not username:
+        raise HTTPException(status_code=400, detail="username is required")
+
+    dbuser = crud.get_user(db, username)
+    if not dbuser:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if not admin.is_sudo:
+        if not getattr(dbuser, "admin", None) or dbuser.admin.username != admin.username:
+            raise HTTPException(status_code=403, detail="You are not allowed")
+
+    device_id_value = (data.device_id or "").strip() or None
+
+    saved = set_v2box_settings_for_username(username, None, device_id_value)
+    try:
+        crud.create_admin_action_log(
+            db=db,
+            admin=(crud.get_admin(db, admin.username) or admin),
+            action="user.v2box_hwid_limit_set",
+            target_type="user",
+            target_username=username,
+            meta={"device_id": bool(saved.get("required_device_id"))},
+        )
+    except Exception:
+        pass
+
+    return {
+        "username": username,
+        "limit": saved.get("limit"),
+        "device_id": saved.get("required_device_id"),
+        "max_limit": None,
+    }
+
+
+@router.post("/v2box-hwid/reset")
+async def reset_v2box_hwid(
+    data: V2BoxHWIDResetRequest,
+    admin: Admin = Depends(Admin.get_current),
+    db: Session = Depends(get_db),
+):
+    username = (data.username or "").strip()
+    if not username:
+        raise HTTPException(status_code=400, detail="username is required")
+
+    dbuser = crud.get_user(db, username)
+    if not dbuser:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if not admin.is_sudo:
+        if not getattr(dbuser, "admin", None) or dbuser.admin.username != admin.username:
+            raise HTTPException(status_code=403, detail="You are not allowed")
+
+    cleared = clear_v2box_for_username(username)
+    try:
+        crud.create_admin_action_log(
+            db=db,
+            admin=(crud.get_admin(db, admin.username) or admin),
+            action="user.v2box_hwid_reset",
+            target_type="user",
+            target_username=username,
+            meta={"cleared": bool(cleared)},
+        )
+    except Exception:
+        pass
+
+    return {"username": username, "cleared": bool(cleared)}
+
+
+@router.get("/admin-user-traffic-limit/{admin_username}")
+async def get_admin_user_traffic_limit(
+    admin_username: str,
+    admin: Admin = Depends(Admin.check_sudo_admin),
+    db: Session = Depends(get_db),
+):
+    dbadmin = crud.get_admin(db, (admin_username or "").strip())
+    if not dbadmin:
+        raise HTTPException(status_code=404, detail="Admin not found")
+    if dbadmin.is_sudo:
+        raise HTTPException(status_code=400, detail="Target admin must be non-sudo")
+
+    limit_bytes = get_admin_user_traffic_limit_bytes(dbadmin.username)
+    return {
+        "admin_username": dbadmin.username,
+        "limit_bytes": limit_bytes,
+        "limit_gb": round(limit_bytes / (1024 ** 3), 3) if limit_bytes is not None else None,
+    }
+
+
+@router.post("/admin-user-traffic-limit")
+async def set_admin_user_traffic_limit(
+    data: AdminUserTrafficLimitRequest,
+    admin: Admin = Depends(Admin.check_sudo_admin),
+    db: Session = Depends(get_db),
+):
+    target_name = (data.admin_username or "").strip()
+    if not target_name:
+        raise HTTPException(status_code=400, detail="admin_username is required")
+
+    dbadmin = crud.get_admin(db, target_name)
+    if not dbadmin:
+        raise HTTPException(status_code=404, detail="Admin not found")
+    if dbadmin.is_sudo:
+        raise HTTPException(status_code=400, detail="Target admin must be non-sudo")
+
+    limit_bytes = data.limit_bytes
+    if limit_bytes is not None:
+        try:
+            limit_bytes = int(limit_bytes)
+        except Exception:
+            raise HTTPException(status_code=400, detail="limit_bytes must be integer")
+        if limit_bytes < 0:
+            raise HTTPException(status_code=400, detail="limit_bytes must be >= 0")
+        if limit_bytes == 0:
+            limit_bytes = None
+
+    saved = set_admin_user_traffic_limit_bytes(dbadmin.username, limit_bytes)
+
+    updated_users = 0
+    if saved is not None:
+        users = crud.get_users(db=db, admin=dbadmin)
+        for u in users:
+            current = u.data_limit
+            if current is None or current == 0 or current > saved:
+                u.data_limit = saved
+                updated_users += 1
+                try:
+                    xray.operations.update_user(dbuser=u)
+                except Exception:
+                    pass
+        if updated_users > 0:
+            db.commit()
+
+    try:
+        # Show this event in selected admin stats (target admin), and keep actor in meta.
+        crud.create_admin_action_log(
+            db=db,
+            admin=dbadmin,
+            action="admin.user_traffic_limit_set",
+            target_type="admin",
+            target_username=dbadmin.username,
+            meta={
+                "limit_bytes": saved,
+                "limit_gb": round(saved / (1024 ** 3), 3) if saved is not None else None,
+                "updated_users": updated_users,
+                "set_by": admin.username,
+            },
+        )
+    except Exception:
+        pass
+
+    return {
+        "admin_username": dbadmin.username,
+        "limit_bytes": saved,
+        "limit_gb": round(saved / (1024 ** 3), 3) if saved is not None else None,
+        "updated_users": updated_users,
+    }
+
+
+@router.get("/admin-manager/admins", response_model=List[AdminSummaryItem])
+async def admin_manager_admins(
+    admin: Admin = Depends(Admin.get_current),
+    db: Session = Depends(get_db),
+):
+    if not admin.is_sudo:
+        raise HTTPException(status_code=403, detail="You're not allowed")
+
+    cache_key = "xpert:admin_manager:admins:v1"
+    cached = _cache_get_json(cache_key)
+    if isinstance(cached, list):
+        return cached
+
+    since = datetime.utcnow() - timedelta(hours=24)
+    out: List[AdminSummaryItem] = []
+    for dbadmin in crud.get_admins(db=db):
+        counts = crud.get_admin_action_counts(db, dbadmin.username, since=since)
+        actions_24h = int(sum(c for _, c in counts))
+        total_users = int(crud.get_users_count(db=db, admin=dbadmin))
+        out.append(
+            AdminSummaryItem(
+                username=dbadmin.username,
+                is_sudo=bool(dbadmin.is_sudo),
+                total_users=total_users,
+                actions_24h=actions_24h,
+            )
+        )
+    payload = [item.model_dump() for item in out]
+    _cache_set_json(cache_key, payload, 5)
+    return payload
+
+
+@router.get("/admin-manager/actions/{admin_username}", response_model=AdminManagerActionsResponse)
+async def admin_manager_actions(
+    admin_username: str,
+    limit: int = 100,
+    offset: int = 0,
+    admin: Admin = Depends(Admin.get_current),
+    db: Session = Depends(get_db),
+):
+    if not admin.is_sudo:
+        raise HTTPException(status_code=403, detail="You're not allowed")
+
+    if limit < 1:
+        limit = 1
+    if limit > 500:
+        limit = 500
+    if offset < 0:
+        offset = 0
+
+    cache_key = f"xpert:admin_manager:actions:v2:{admin_username}:{offset}:{limit}"
+    cached = _cache_get_json(cache_key)
+    if isinstance(cached, dict) and "items" in cached and "total" in cached:
+        return cached
+
+    total = crud.count_admin_action_logs(db, admin_username=admin_username)
+    rows = crud.get_admin_action_logs(db, admin_username=admin_username, offset=offset, limit=limit)
+    items = []
+    for r in rows:
+        meta_obj = r.meta
+        if isinstance(meta_obj, str):
+            try:
+                parsed = json.loads(meta_obj)
+                if isinstance(parsed, str):
+                    parsed = json.loads(parsed)
+                meta_obj = parsed if isinstance(parsed, dict) else None
+            except Exception:
+                meta_obj = None
+
+        items.append(
+            AdminActionLogItem(
+                id=r.id,
+                created_at=r.created_at.isoformat() if r.created_at else "",
+                admin_username=r.admin_username,
+                action=r.action,
+                target_type=r.target_type,
+                target_username=r.target_username,
+                meta=meta_obj if isinstance(meta_obj, dict) else None,
+            )
+        )
+    payload = AdminManagerActionsResponse(total=total, items=items).model_dump()
+    _cache_set_json(cache_key, payload, 3)
+    return payload
+
+
+@router.get("/admin-manager/lifetime/{admin_username}", response_model=AdminLifetimeStatsResponse)
+async def admin_manager_lifetime_stats(
+    admin_username: str,
+    admin: Admin = Depends(Admin.get_current),
+    db: Session = Depends(get_db),
+):
+    if not admin.is_sudo:
+        raise HTTPException(status_code=403, detail="You're not allowed")
+
+    cache_key = f"xpert:admin_manager:lifetime:v1:{admin_username}"
+    cached = _cache_get_json(cache_key)
+    if isinstance(cached, dict) and "created_count" in cached and "extended_count" in cached and "deleted_count" in cached:
+        return cached
+
+    rows = crud.get_admin_action_logs(db, admin_username=admin_username, offset=0, limit=100000)
+
+    def _meta_obj(raw):
+        if isinstance(raw, dict):
+            return raw
+        if isinstance(raw, str):
+            try:
+                parsed = json.loads(raw)
+                if isinstance(parsed, str):
+                    parsed = json.loads(parsed)
+                if isinstance(parsed, dict):
+                    return parsed
+            except Exception:
+                return {}
+        return {}
+
+    created_count = 0
+    extended_count = 0
+    deleted_count = 0
+
+    created_users: dict = {}
+    extended_users: dict = {}
+    deleted_users: dict = {}
+
+    def _touch(bucket: dict, username: str, created_at: Optional[datetime]) -> None:
+        u = (username or "").strip()
+        if not u:
+            return
+        item = bucket.get(u)
+        ts = created_at.isoformat() if created_at else ""
+        if not item:
+            bucket[u] = {"username": u, "count": 1, "last_at": ts}
+            return
+        item["count"] = int(item.get("count", 0)) + 1
+        prev = item.get("last_at") or ""
+        if ts and (not prev or ts > prev):
+            item["last_at"] = ts
+
+    for r in rows:
+        target = (r.target_username or "").strip()
+        action = (r.action or "").strip()
+        meta = _meta_obj(r.meta)
+
+        if action == "user.create":
+            created_count += 1
+            _touch(created_users, target, r.created_at)
+            continue
+
+        if action == "user.delete":
+            deleted_count += 1
+            _touch(deleted_users, target, r.created_at)
+            continue
+
+        if action == "user.modify":
+            changes = meta.get("changes") if isinstance(meta, dict) else {}
+            if isinstance(changes, dict) and (("expire" in changes) or ("data_limit" in changes)):
+                extended_count += 1
+                _touch(extended_users, target, r.created_at)
+
+    def _to_list(bucket: dict) -> List[dict]:
+        return sorted(
+            list(bucket.values()),
+            key=lambda x: ((x.get("last_at") or ""), int(x.get("count") or 0)),
+            reverse=True,
+        )
+
+    payload = AdminLifetimeStatsResponse(
+        created_count=created_count,
+        extended_count=extended_count,
+        deleted_count=deleted_count,
+        created_users=[AdminLifetimeUserItem(**x) for x in _to_list(created_users)],
+        extended_users=[AdminLifetimeUserItem(**x) for x in _to_list(extended_users)],
+        deleted_users=[AdminLifetimeUserItem(**x) for x in _to_list(deleted_users)],
+    ).model_dump()
+    _cache_set_json(cache_key, payload, 10)
+    return payload

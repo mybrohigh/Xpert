@@ -1,5 +1,6 @@
 import re
 import secrets
+from urllib.parse import quote_plus
 from datetime import datetime
 from enum import Enum
 from typing import Dict, List, Optional, Union
@@ -11,6 +12,7 @@ from app.models.admin import Admin
 from app.models.proxy import ProxySettings, ProxyTypes
 from app.subscription.share import generate_v2ray_links
 from app.utils.jwt import create_subscription_token
+from app.xpert.v2box_hwid_service import get_required_v2box_device_id_for_username
 from config import XRAY_SUBSCRIPTION_PATH, XRAY_SUBSCRIPTION_URL_PREFIX
 
 USERNAME_REGEXP = re.compile(r"^(?=\w{3,32}\b)[a-zA-Z0-9-_@.]+(?:_[a-zA-Z0-9-_@.]+)*$")
@@ -312,6 +314,19 @@ class UserResponse(User):
         # Force v2ray format for all subscriptions
         if self.subscription_url and not self.subscription_url.endswith("/v2ray"):
             self.subscription_url = self.subscription_url.rstrip("/") + "/v2ray"
+
+        # V2Box mode: if explicit device_id exists, embed it in subscription query.
+        try:
+            req_id = get_required_v2box_device_id_for_username(self.username)
+            if req_id:
+                encoded = quote_plus(req_id)
+                if "?" in self.subscription_url:
+                    if "v2box_id=" not in self.subscription_url:
+                        self.subscription_url = self.subscription_url + f"&v2box_id={encoded}"
+                else:
+                    self.subscription_url = self.subscription_url + f"?v2box_id={encoded}"
+        except Exception:
+            pass
         return self
 
     @field_validator("proxies", mode="before")

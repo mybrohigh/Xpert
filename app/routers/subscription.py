@@ -11,6 +11,7 @@ from app.models.user import SubscriptionUserResponse, UserResponse
 from app.subscription.share import encode_title, generate_subscription
 from app.xpert.hwid_lock_service import check_and_register_hwid_for_username
 from app.xpert.ip_limit_service import check_and_register_ip_for_username, get_client_ip
+from app.xpert.v2box_hwid_service import check_and_register_v2box_for_username, has_v2box_protection
 from app.templates import render_template
 from app import logger
 from config import (
@@ -58,14 +59,46 @@ def get_subscription_user_info(user: UserResponse) -> dict:
     }
 
 
-def _enforce_hwid_lock(user: UserResponse, x_hwid: str) -> None:
+def _enforce_hwid_lock(user: UserResponse, x_hwid: str, user_agent: str, request: Request) -> None:
+    # HWID lock is intended for Happ clients.
+    # Keep main panel subscriptions working for other clients.
+    if not re.match(r"^Happ/", user_agent or ""):
+        return
+    # Enforce only for crypto-generated links marked with xpert_hwid=1.
+    mode = (request.query_params.get("xpert_hwid") or "").strip().lower()
+    if mode not in ("1", "true", "yes", "on"):
+        return
     if not check_and_register_hwid_for_username(user.username, x_hwid):
+        raise HTTPException(status_code=404, detail="Not Found")
+
+
+
+
+def _enforce_v2box_id_policy(user: UserResponse, request: Request, user_agent: str) -> None:
+    if not has_v2box_protection(user.username):
+        return
+
+    # Enforce whenever V2Box device protection is configured for this user.
+
+    ua = (user_agent or "").lower()
+    # Protected subscriptions are accepted only from V2Box clients.
+    if "v2box" not in ua:
+        logger.warning(f"V2BOX_BLOCK user={user.username} reason=ua_not_v2box ua={user_agent}")
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    headers = {k.lower(): v for k, v in request.headers.items()}
+    if not check_and_register_v2box_for_username(user.username, headers, dict(request.query_params)):
+        logger.warning(f"V2BOX_BLOCK user={user.username} reason=device_id_mismatch_or_missing")
         raise HTTPException(status_code=404, detail="Not Found")
 
 
 def _enforce_unique_ip_limit(user: UserResponse, request: Request, user_agent: str) -> None:
     # Apply only for non-Happ clients (Happ uses HWID logic).
     if re.match(r"^Happ/", user_agent or ""):
+        return
+    # Enforce only for links explicitly marked for IP-limit mode.
+    mode = (request.query_params.get("xpert_ip") or "").strip().lower()
+    if mode not in ("1", "true", "yes", "on"):
         return
     ip = get_client_ip(request)
     if not check_and_register_ip_for_username(user.username, ip):
@@ -109,7 +142,8 @@ def user_subscription(
         except Exception:
             pass
 
-    _enforce_hwid_lock(user, x_hwid)
+    _enforce_hwid_lock(user, x_hwid, user_agent, request)
+    _enforce_v2box_id_policy(user, request, user_agent)
     _enforce_unique_ip_limit(user, request, user_agent)
 
     accept_header = request.headers.get("Accept", "")
@@ -259,8 +293,12 @@ def user_subscription_with_client_type(
         except Exception:
             pass
 
-    _enforce_hwid_lock(user, x_hwid)
+    _enforce_hwid_lock(user, x_hwid, user_agent, request)
+    _enforce_v2box_id_policy(user, request, user_agent)
     _enforce_unique_ip_limit(user, request, user_agent)
+
+    # Track subscription fetch for explicit client_type endpoints too (/sub/<token>/v2ray).
+    crud.update_user_sub(db, dbuser, user_agent)
 
     response_headers = {
         "content-disposition": f'attachment; filename="{user.username}"',

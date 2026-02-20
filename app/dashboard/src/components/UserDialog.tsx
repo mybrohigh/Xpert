@@ -89,6 +89,7 @@ export type UserDialogProps = {};
 export type FormType = Pick<UserCreate, keyof UserCreate> & {
   selected_proxies: ProxyKeys;
   unique_ip_limit: string;
+  v2box_hwid: string;
 };
 
 const formatUser = (user: User): FormType => {
@@ -102,6 +103,7 @@ const formatUser = (user: User): FormType => {
       : user.on_hold_expire_duration,
     selected_proxies: Object.keys(user.proxies) as ProxyKeys,
     unique_ip_limit: "3",
+    v2box_hwid: "",
   };
 };
 const getDefaultValues = (): FormType => {
@@ -120,6 +122,7 @@ const getDefaultValues = (): FormType => {
     on_hold_expire_duration: null,
     note: "",
     unique_ip_limit: "3",
+    v2box_hwid: "",
     inbounds,
     proxies: {
       vless: { id: "", flow: "" },
@@ -154,6 +157,7 @@ const baseSchema = {
   }),
   note: z.string().nullable(),
   unique_ip_limit: z.string().default("3"),
+  v2box_hwid: z.string().default(""),
   proxies: z
     .record(z.string(), z.record(z.string(), z.any()))
     .transform((ins) => {
@@ -228,6 +232,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
     onEditingUser,
     createUser,
     onDeletingUser,
+    refetchUsers,
   } = useDashboard();
   const isEditing = !!editingUser;
   const isOpen = isCreatingNewUser || isEditing;
@@ -239,6 +244,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
   const { colorMode } = useColorMode();
 
   const [usageVisible, setUsageVisible] = useState(false);
+  const [ipLimitMax, setIpLimitMax] = useState<number>(3);
   const handleUsageToggle = () => {
     setUsageVisible((current) => !current);
   };
@@ -280,17 +286,64 @@ export const UserDialog: FC<UserDialogProps> = () => {
   };
 
   useEffect(() => {
+    if (!isOpen) return;
+    Promise.allSettled([fetch("/xpert/ip-limit-cap"), fetch("/admin"), fetch("/admins")])
+      .then((results) => {
+        const capResp: any =
+          results[0].status === "fulfilled" ? (results[0] as PromiseFulfilledResult<any>).value : null;
+        const adminResp: any =
+          results[1].status === "fulfilled" ? (results[1] as PromiseFulfilledResult<any>).value : null;
+        const adminsResp: any =
+          results[2].status === "fulfilled" ? (results[2] as PromiseFulfilledResult<any>).value : null;
+
+        const capFromApi = Number(capResp?.max_limit || 3);
+        const adminUsername = String(adminResp?.username || "");
+        const dbAdminEntry = Array.isArray(adminsResp)
+          ? adminsResp.find((a: any) => String(a?.username || "") === adminUsername)
+          : null;
+
+        // Prefer DB-backed admin role when available: if admin exists in DB and not sudo -> always 3.
+        if (dbAdminEntry && dbAdminEntry?.is_sudo === false) {
+          setIpLimitMax(3);
+          return;
+        }
+
+        // For true sudo admins keep 5, otherwise 3.
+        if (capFromApi >= 5 && adminResp?.is_sudo === true) {
+          setIpLimitMax(5);
+          return;
+        }
+
+        setIpLimitMax(3);
+      })
+      .catch(() => setIpLimitMax(3));
+  }, [isOpen]);
+
+  useEffect(() => {
     if (editingUser) {
       form.reset(formatUser(editingUser));
 
       // Load per-user unique IP limit (2h window) for non-Happ clients.
       fetch(`/xpert/ip-limit/${encodeURIComponent(editingUser.username)}`)
         .then((resp: any) => {
-          const limit = resp?.limit ?? 3;
-          form.setValue("unique_ip_limit", String(limit));
+          const maxLimit = Number(resp?.max_limit || 3);
+          const limit = Number(resp?.limit ?? 3);
+          setIpLimitMax(maxLimit);
+          const safeLimit = Math.min(Math.max(1, limit), maxLimit);
+          form.setValue("unique_ip_limit", String(safeLimit));
         })
         .catch(() => {
+          setIpLimitMax(3);
           form.setValue("unique_ip_limit", "3");
+        });
+
+      // Load V2Box device ID lock setting.
+      fetch(`/xpert/v2box-hwid/${encodeURIComponent(editingUser.username)}`)
+        .then((resp: any) => {
+          form.setValue("v2box_hwid", resp?.device_id || "");
+        })
+        .catch(() => {
+          form.setValue("v2box_hwid", "");
         });
 
       fetchUsageWithFilter({
@@ -305,7 +358,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
     const method = isEditing ? "edited" : "created";
     setError(null);
 
-    const { selected_proxies, unique_ip_limit, ...rest } = values;
+    const { selected_proxies, unique_ip_limit, v2box_hwid, ...rest } = values;
 
     let body: UserCreate = {
       ...rest,
@@ -342,6 +395,25 @@ export const UserDialog: FC<UserDialogProps> = () => {
             duration: 3000,
           });
         }
+
+        // Apply V2Box device ID lock (ID-only mode).
+        try {
+          await fetch("/xpert/v2box-hwid", {
+            method: "POST",
+            body: { username: values.username, device_id: (v2box_hwid || "").trim() || null },
+          });
+        } catch (e) {
+          toast({
+            title: t("userDialog.v2boxHwidLimitFailed"),
+            status: "warning",
+            isClosable: true,
+            position: "top",
+            duration: 3000,
+          });
+        }
+
+        // refresh users list so copied subscription link includes latest v2box_hwid query
+        refetchUsers();
 
         toast({
           title: t(
@@ -741,13 +813,12 @@ export const UserDialog: FC<UserDialogProps> = () => {
                       <FormControl mb={"10px"}>
                         <FormLabel>{t("userDialog.uniqueIpLimit")}</FormLabel>
                         <Select size="sm" {...form.register("unique_ip_limit")}>
-                          <option value="1">1</option>
-                          <option value="2">2</option>
-                          <option value="3">3</option>
-                          <option value="4">4</option>
-                          <option value="5">5</option>
+                          {Array.from({ length: ipLimitMax }, (_, i) => i + 1).map((v) => (
+                            <option key={v} value={String(v)}>
+                              {v}
+                            </option>
+                          ))}
                         </Select>
-                        <FormHelperText>{t("userDialog.uniqueIpLimitHelp")}</FormHelperText>
                       </FormControl>
                     </Flex>
                     {error && (
@@ -804,6 +875,48 @@ export const UserDialog: FC<UserDialogProps> = () => {
                           ?.message as string
                       )}
                     </FormErrorMessage>
+                  </FormControl>
+
+                  <FormControl mt={3} mb={"10px"}>
+                    <FormLabel>{t("userDialog.v2boxHwidLimit")}</FormLabel>
+                    <Input
+                      mt={2}
+                      size="sm"
+                      placeholder={t("userDialog.v2boxHwidPlaceholder")}
+                      {...form.register("v2box_hwid")}
+                    />
+                    {isEditing && (
+                      <Button
+                        mt={2}
+                        size="xs"
+                        variant="outline"
+                        onClick={async () => {
+                          try {
+                            await fetch("/xpert/v2box-hwid/reset", {
+                              method: "POST",
+                              body: { username: form.getValues("username") },
+                            });
+                            toast({
+                              title: t("userDialog.v2boxHwidResetDone"),
+                              status: "success",
+                              isClosable: true,
+                              position: "top",
+                              duration: 2500,
+                            });
+                          } catch {
+                            toast({
+                              title: t("userDialog.v2boxHwidResetFailed"),
+                              status: "warning",
+                              isClosable: true,
+                              position: "top",
+                              duration: 2500,
+                            });
+                          }
+                        }}
+                      >
+                        {t("userDialog.v2boxHwidReset")}
+                      </Button>
+                    )}
                   </FormControl>
                 </GridItem>
                 {isEditing && usageVisible && (

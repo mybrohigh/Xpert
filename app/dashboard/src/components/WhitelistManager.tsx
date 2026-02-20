@@ -4,6 +4,7 @@ import {
   Card,
   CardBody,
   CardHeader,
+  Flex,
   FormControl,
   FormLabel,
   Heading,
@@ -27,6 +28,8 @@ import {
   Tr,
   useDisclosure,
   useToast,
+  useBreakpointValue,
+  VStack,
   Badge,
   Textarea,
 } from "@chakra-ui/react";
@@ -92,6 +95,7 @@ export const WhitelistManager: FC = () => {
     onOpen: onHostOpen, 
     onClose: onHostClose 
   } = useDisclosure();
+  const isMobile = useBreakpointValue({ base: true, md: false });
 
   const loadData = async () => {
     setLoading(true);
@@ -260,69 +264,133 @@ export const WhitelistManager: FC = () => {
   return (
     <Card>
       <CardHeader>
-        <HStack justify="space-between" align="center">
+        <Stack
+          direction={{ base: "column", md: "row" }}
+          justify="space-between"
+          align={{ base: "stretch", md: "center" }}
+          spacing={3}
+        >
           <Heading size="md">IP/Domain Whitelists</Heading>
-          <Button colorScheme="purple" onClick={onWhitelistOpen}>
+          <Button colorScheme="purple" onClick={onWhitelistOpen} size="sm">
             Create Whitelist
           </Button>
-        </HStack>
+        </Stack>
       </CardHeader>
       <CardBody>
-        <Table variant="simple">
-          <Thead>
-            <Tr>
-              <Th>Name</Th>
-              <Th>Description</Th>
-              <Th>Hosts</Th>
-              <Th>Active</Th>
-              <Th>Created</Th>
-              <Th>Actions</Th>
-            </Tr>
-          </Thead>
-          <Tbody>
+        {isMobile ? (
+          <VStack align="stretch" spacing={3}>
             {whitelists.map((whitelist) => (
-              <Tr key={whitelist.id}>
-                <Td fontWeight="bold">{whitelist.name}</Td>
-                <Td fontSize="sm">{whitelist.description || "-"}</Td>
-                <Td>
-                  <Badge colorScheme="blue">
-                    {whitelist.active_hosts}/{whitelist.hosts_count}
-                  </Badge>
-                </Td>
-                <Td>
+              <Box
+                key={whitelist.id}
+                borderWidth="1px"
+                borderColor="gray.200"
+                _dark={{ borderColor: "gray.600" }}
+                borderRadius="md"
+                p={3}
+              >
+                <Flex justify="space-between" align="center">
+                  <Text fontWeight="semibold" noOfLines={1}>
+                    {whitelist.name}
+                  </Text>
                   <Badge colorScheme={whitelist.is_active ? "green" : "red"}>
                     {whitelist.is_active ? "Active" : "Inactive"}
                   </Badge>
-                </Td>
-                <Td fontSize="sm">
-                  {new Date(whitelist.created_at).toLocaleDateString()}
-                </Td>
-                <Td>
-                  <HStack>
-                    <Button
-                      size="sm"
-                      colorScheme="blue"
-                      onClick={() => {
-                        setSelectedWhitelist(whitelist);
-                        loadWhitelistHosts(whitelist.id);
-                        onHostOpen();
-                      }}
-                    >
-                      View Hosts
-                    </Button>
-                    <IconButton
-                      aria-label="Delete"
-                      icon={<DeleteIcon />}
-                      colorScheme="red"
-                      size="sm"
-                      onClick={() => handleDeleteWhitelist(whitelist.id)}
-                    />
-                  </HStack>
-                </Td>
-              </Tr>
+                </Flex>
+
+                <Text fontSize="sm" color="gray.600" mt={1} noOfLines={2}>
+                  {whitelist.description || "-"}
+                </Text>
+
+                <HStack mt={2} justify="space-between">
+                  <Badge colorScheme="blue">
+                    {whitelist.active_hosts}/{whitelist.hosts_count} hosts
+                  </Badge>
+                  <Text fontSize="sm" color="gray.500">
+                    {new Date(whitelist.created_at).toLocaleDateString()}
+                  </Text>
+                </HStack>
+
+                <HStack mt={3} spacing={2}>
+                  <Button
+                    size="xs"
+                    colorScheme="blue"
+                    onClick={() => {
+                      setSelectedWhitelist(whitelist);
+                      loadWhitelistHosts(whitelist.id);
+                      onHostOpen();
+                    }}
+                  >
+                    View Hosts
+                  </Button>
+                  <IconButton
+                    aria-label="Delete"
+                    icon={<DeleteIcon />}
+                    colorScheme="red"
+                    size="xs"
+                    variant="ghost"
+                    onClick={() => handleDeleteWhitelist(whitelist.id)}
+                  />
+                </HStack>
+              </Box>
             ))}
-          </Tbody>
-        </Table>
+          </VStack>
+        ) : (
+          <Box overflowX="auto">
+            <Table variant="simple">
+              <Thead>
+                <Tr>
+                  <Th>Name</Th>
+                  <Th>Description</Th>
+                  <Th>Hosts</Th>
+                  <Th>Active</Th>
+                  <Th>Created</Th>
+                  <Th>Actions</Th>
+                </Tr>
+              </Thead>
+              <Tbody>
+                {whitelists.map((whitelist) => (
+                  <Tr key={whitelist.id}>
+                    <Td fontWeight="bold">{whitelist.name}</Td>
+                    <Td fontSize="sm">{whitelist.description || "-"}</Td>
+                    <Td>
+                      <Badge colorScheme="blue">
+                        {whitelist.active_hosts}/{whitelist.hosts_count}
+                      </Badge>
+                    </Td>
+                    <Td>
+                      <Badge colorScheme={whitelist.is_active ? "green" : "red"}>
+                        {whitelist.is_active ? "Active" : "Inactive"}
+                      </Badge>
+                    </Td>
+                    <Td fontSize="sm">{new Date(whitelist.created_at).toLocaleDateString()}</Td>
+                    <Td>
+                      <HStack>
+                        <Button
+                          size="sm"
+                          colorScheme="blue"
+                          onClick={() => {
+                            setSelectedWhitelist(whitelist);
+                            loadWhitelistHosts(whitelist.id);
+                            onHostOpen();
+                          }}
+                        >
+                          View Hosts
+                        </Button>
+                        <IconButton
+                          aria-label="Delete"
+                          icon={<DeleteIcon />}
+                          colorScheme="red"
+                          size="sm"
+                          onClick={() => handleDeleteWhitelist(whitelist.id)}
+                        />
+                      </HStack>
+                    </Td>
+                  </Tr>
+                ))}
+              </Tbody>
+            </Table>
+          </Box>
+        )}
         {whitelists.length === 0 && (
           <Text textAlign="center" color="gray.500" py={4}>
             No whitelists created yet. Create a whitelist to filter servers by IP/domain.
@@ -421,40 +489,82 @@ export const WhitelistManager: FC = () => {
               {selectedWhitelist && whitelistHosts.length > 0 && (
                 <Box>
                   <FormLabel>Current Hosts</FormLabel>
-                  <Table variant="simple" size="sm">
-                    <Thead>
-                      <Tr>
-                        <Th>Host</Th>
-                        <Th>Description</Th>
-                        <Th>Country</Th>
-                        <Th>Status</Th>
-                        <Th>Actions</Th>
-                      </Tr>
-                    </Thead>
-                    <Tbody>
+                  {isMobile ? (
+                    <VStack align="stretch" spacing={2}>
                       {whitelistHosts.map((host) => (
-                        <Tr key={host.host}>
-                          <Td fontFamily="monospace">{host.host}</Td>
-                          <Td fontSize="sm">{host.description || "-"}</Td>
-                          <Td>{host.country || "-"}</Td>
-                          <Td>
-                            <Badge colorScheme={host.is_active ? "green" : "red"}>
-                              {host.is_active ? "Active" : "Inactive"}
-                            </Badge>
-                          </Td>
-                          <Td>
-                            <IconButton
-                              aria-label="Delete"
-                              icon={<DeleteIcon />}
-                              colorScheme="red"
-                              size="sm"
-                              onClick={() => handleDeleteHost(host.host)}
-                            />
-                          </Td>
-                        </Tr>
+                        <Box
+                          key={host.host}
+                          borderWidth="1px"
+                          borderColor="gray.200"
+                          _dark={{ borderColor: "gray.600" }}
+                          borderRadius="md"
+                          p={2}
+                        >
+                          <Flex justify="space-between" align="center">
+                            <Text fontFamily="monospace" fontSize="sm" noOfLines={1}>
+                              {host.host}
+                            </Text>
+                            <HStack>
+                              <Badge colorScheme={host.is_active ? "green" : "red"}>
+                                {host.is_active ? "Active" : "Inactive"}
+                              </Badge>
+                              <IconButton
+                                aria-label="Delete"
+                                icon={<DeleteIcon />}
+                                colorScheme="red"
+                                size="xs"
+                                variant="ghost"
+                                onClick={() => handleDeleteHost(host.host)}
+                              />
+                            </HStack>
+                          </Flex>
+                          <Text fontSize="sm" color="gray.600" mt={1} noOfLines={2}>
+                            {host.description || "-"}
+                          </Text>
+                          <Text fontSize="sm" color="gray.500">
+                            {host.country || "-"}
+                          </Text>
+                        </Box>
                       ))}
-                    </Tbody>
-                  </Table>
+                    </VStack>
+                  ) : (
+                    <Box overflowX="auto">
+                      <Table variant="simple" size="sm">
+                        <Thead>
+                          <Tr>
+                            <Th>Host</Th>
+                            <Th>Description</Th>
+                            <Th>Country</Th>
+                            <Th>Status</Th>
+                            <Th>Actions</Th>
+                          </Tr>
+                        </Thead>
+                        <Tbody>
+                          {whitelistHosts.map((host) => (
+                            <Tr key={host.host}>
+                              <Td fontFamily="monospace">{host.host}</Td>
+                              <Td fontSize="sm">{host.description || "-"}</Td>
+                              <Td>{host.country || "-"}</Td>
+                              <Td>
+                                <Badge colorScheme={host.is_active ? "green" : "red"}>
+                                  {host.is_active ? "Active" : "Inactive"}
+                                </Badge>
+                              </Td>
+                              <Td>
+                                <IconButton
+                                  aria-label="Delete"
+                                  icon={<DeleteIcon />}
+                                  colorScheme="red"
+                                  size="sm"
+                                  onClick={() => handleDeleteHost(host.host)}
+                                />
+                              </Td>
+                            </Tr>
+                          ))}
+                        </Tbody>
+                      </Table>
+                    </Box>
+                  )}
                 </Box>
               )}
             </Stack>

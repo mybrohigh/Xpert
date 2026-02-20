@@ -124,20 +124,51 @@ const UsageSlider: FC<UsageSliderProps> = (props) => {
     total,
     dataLimitResetStrategy,
     totalUsedTraffic,
+    colorScheme,
     ...restOfProps
   } = props;
   const isUnlimited = total === 0 || total === null;
-  const isReached = !isUnlimited && (used / total) * 100 >= 100;
+  const usagePercent = isUnlimited ? 100 : Math.min((used / total) * 100, 100);
+  const isExpired = colorScheme === "yellow" || colorScheme === "orange";
+  const isTrafficLimited =
+    colorScheme === "red" || (!isUnlimited && total !== null && used >= total);
+  const usageTone = isExpired ? "warn" : isTrafficLimited ? "danger" : "ok";
   return (
     <>
       <Slider
         orientation="horizontal"
-        value={isUnlimited ? 100 : Math.min((used / total) * 100, 100)}
-        colorScheme={isReached ? "red" : "primary"}
+        value={usagePercent}
         {...restOfProps}
       >
-        <SliderTrack h="6px" borderRadius="full">
-          <SliderFilledTrack borderRadius="full" />
+        <SliderTrack
+          h="6px"
+          borderRadius="full"
+          _dark={{ bg: "rgba(148,163,184,0.16)" }}
+        >
+          <SliderFilledTrack
+            borderRadius="full"
+            bg={
+              usageTone === "danger"
+                ? "rgba(248,113,113,0.72)"
+                : usageTone === "warn"
+                ? "rgba(253,224,71,0.72)"
+                : "rgba(103,232,249,0.72)"
+            }
+            _dark={{
+              bg:
+                usageTone === "danger"
+                  ? "rgba(255,77,97,0.72)"
+                  : usageTone === "warn"
+                  ? "rgba(255,217,90,0.72)"
+                  : "rgba(103,232,249,0.72)",
+              boxShadow:
+                usageTone === "danger"
+                  ? "0 0 8px rgba(255,77,97,0.52), 0 0 14px rgba(255,77,97,0.26)"
+                  : usageTone === "warn"
+                  ? "0 0 8px rgba(255,217,90,0.48), 0 0 14px rgba(255,217,90,0.24)"
+                  : "0 0 8px rgba(103,232,249,0.48), 0 0 14px rgba(34,211,238,0.24)",
+            }}
+          />
         </SliderTrack>
       </Slider>
       <HStack

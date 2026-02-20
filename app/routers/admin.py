@@ -87,7 +87,45 @@ def modify_admin(
             detail="You're not allowed to edit another sudoer's account. Use marzban-cli instead.",
         )
 
+    old_traffic_limit = dbadmin.traffic_limit
+    old_users_limit = dbadmin.users_limit
+    fields_set = getattr(modified_admin, "model_fields_set", None) or getattr(modified_admin, "__fields_set__", set())
+
     updated_admin = crud.update_admin(db, dbadmin, modified_admin)
+
+    # Audit logs for Admin Manager: track admin limit changes.
+    try:
+        actor = crud.get_admin(db, current_admin.username)
+
+        if "traffic_limit" in fields_set and modified_admin.traffic_limit is not None and old_traffic_limit != updated_admin.traffic_limit:
+            new_bytes = int(updated_admin.traffic_limit) if updated_admin.traffic_limit is not None else None
+            crud.create_admin_action_log(
+                db=db,
+                admin=actor,
+                action="admin.traffic_limit_set",
+                target_type="admin",
+                target_username=updated_admin.username,
+                meta={
+                    "old": old_traffic_limit,
+                    "new": new_bytes,
+                    "new_gb": round(new_bytes / (1024**3), 3) if new_bytes is not None else None,
+                },
+            )
+
+        if "users_limit" in fields_set and modified_admin.users_limit is not None and old_users_limit != updated_admin.users_limit:
+            crud.create_admin_action_log(
+                db=db,
+                admin=actor,
+                action="admin.users_limit_set",
+                target_type="admin",
+                target_username=updated_admin.username,
+                meta={
+                    "old": old_users_limit,
+                    "new": int(updated_admin.users_limit) if updated_admin.users_limit is not None else None,
+                },
+            )
+    except Exception:
+        pass
 
     return updated_admin
 

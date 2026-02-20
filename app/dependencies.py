@@ -73,7 +73,9 @@ def get_validated_sub(
         raise HTTPException(status_code=404, detail="Not Found")
 
     dbuser = crud.get_user(db, sub['username'])
-    if not dbuser or dbuser.created_at > sub['created_at']:
+    # Keep legacy/stale tokens working for existing username.
+    # Hard invalidation is still controlled by sub_revoked_at.
+    if not dbuser:
         raise HTTPException(status_code=404, detail="Not Found")
 
     if dbuser.sub_revoked_at and dbuser.sub_revoked_at > sub['created_at']:

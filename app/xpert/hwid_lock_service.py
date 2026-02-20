@@ -96,6 +96,10 @@ def set_required_hwid_for_subscription_url(url: str, hwid: str) -> Optional[str]
     hwid_norm = normalize_hwid(hwid)
     if not hwid_norm:
         return None
+    # Guard against accidental paste of subscription URL into HWID field.
+    low = hwid_norm.lower()
+    if low.startswith("http://") or low.startswith("https://") or "/sub/" in low:
+        return None
 
     username = _get_username_from_sub_url(url)
     if not username:

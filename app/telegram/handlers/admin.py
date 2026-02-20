@@ -728,8 +728,7 @@ def genqr_command(call: types.CallbackQuery):
             expiry_date = datetime.fromtimestamp(user.expire).date() if user.expire else "Never"
             time_left = time_to_string(datetime.fromtimestamp(user.expire)) if user.expire else "-"
             if user.status == UserStatus.on_hold:
-                expiry_text = f"⏰ <b>On Hold Duration:</b> <code>{on_hold_duration} days</code> (auto start at <code>{
-                    on_hold_timeout}</code>)"
+                expiry_text = f"⏰ <b>On Hold Duration:</b> <code>{on_hold_duration} days</code> (auto start at <code>{on_hold_timeout}</code>)"
             else:
                 expiry_text = f"📅 <b>Expiry Date:</b> <code>{expiry_date}</code> ({time_left})"
             text = f"""\
@@ -1048,16 +1047,14 @@ def add_user_from_template_username_step(message: types.Message):
         if len(username) < 3:
             wait_msg = bot.send_message(
                 message.chat.id,
-                f"❌ Username can't be generated because is shorter than 32 characters! username: <code>{
-                    username}</code>",
+                f"❌ Username can't be generated because is shorter than 32 characters! username: <code>{username}</code>",
                 parse_mode="HTML")
             schedule_delete_message(message.chat.id, wait_msg.message_id, message.message_id)
             return bot.register_next_step_handler(wait_msg, add_user_from_template_username_step)
         elif len(username) > 32:
             wait_msg = bot.send_message(
                 message.chat.id,
-                f"❌ Username can't be generated because is longer than 32 characters! username: <code>{
-                    username}</code>",
+                f"❌ Username can't be generated because is longer than 32 characters! username: <code>{username}</code>",
                 parse_mode="HTML")
             schedule_delete_message(message.chat.id, wait_msg.message_id, message.message_id)
             return bot.register_next_step_handler(wait_msg, add_user_from_template_username_step)
@@ -1978,8 +1975,7 @@ def confirm_user_command(call: types.CallbackQuery):
             cleanup_messages(chat_id)
             bot.send_message(
                 chat_id,
-                f'✅ <b>{counter}/{len(users)} Users</b> Data Limit according to <code>{"+" if data_limit >
-                                                                                       0 else "-"}{readable_size(abs(data_limit))}</code>',
+                f'✅ <b>{counter}/{len(users)} Users</b> Data Limit according to <code>{"+" if data_limit > 0 else "-"}{readable_size(abs(data_limit))}</code>',
                 'HTML',
                 reply_markup=BotKeyboard.main_menu())
             if TELEGRAM_LOGGER_CHANNEL_ID:

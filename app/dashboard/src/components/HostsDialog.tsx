@@ -1270,14 +1270,25 @@ export const HostsDialog: FC = () => {
   return (
     <Modal isOpen={isEditingHosts} onClose={onClose}>
       <ModalOverlay bg="blackAlpha.300" backdropFilter="blur(10px)" />
-      <ModalContent mx="3" w="fit-content" maxW="3xl">
+      <ModalContent
+        mx={{ base: 2, md: 3 }}
+        w={{ base: "calc(100vw - 16px)", md: "fit-content" }}
+        maxW={{ base: "calc(100vw - 16px)", md: "3xl" }}
+      >
         <ModalHeader pt={6}>
           <Icon color="primary">
             <ModalIcon color="white" />
           </Icon>
         </ModalHeader>
         <ModalCloseButton mt={3} />
-        <ModalBody w="440px" pb={3} pt={3}>
+        <ModalBody
+          w={{ base: "full", md: "440px" }}
+          maxW="full"
+          pb={3}
+          pt={3}
+          maxH={{ base: "calc(100vh - 140px)", md: "70vh" }}
+          overflowY="auto"
+        >
           <FormProvider {...form}>
             <form onSubmit={form.handleSubmit(handleFormSubmit)}>
               <Text mb={3} opacity={0.8} fontSize="sm">

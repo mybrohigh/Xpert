@@ -19,6 +19,7 @@ from app.models.user import (
 )
 from app.models.proxy import ProxySettings, ProxyTypes
 from app.utils import report, responses
+from app.xpert.admin_user_traffic_limit_service import get_admin_user_traffic_limit_bytes
 
 router = APIRouter(tags=["User"], prefix="/api", responses={401: responses._401})
 
@@ -32,6 +33,16 @@ def _enforce_admin_limits(db: Session, target_admin, add_users: int = 0) -> None
     if target_admin.traffic_limit is not None and target_admin.users_usage is not None:
         if target_admin.users_usage >= target_admin.traffic_limit:
             raise HTTPException(status_code=403, detail="Admin traffic limit reached")
+
+
+
+def _apply_admin_user_traffic_cap(user_obj, admin_username: Optional[str]) -> None:
+    cap = get_admin_user_traffic_limit_bytes((admin_username or "").strip())
+    if cap is None:
+        return
+    current = getattr(user_obj, "data_limit", None)
+    if current is None or current == 0 or current > cap:
+        setattr(user_obj, "data_limit", cap)
 
 
 
@@ -69,6 +80,7 @@ def add_user(
 
     dbadmin = crud.get_admin(db, admin.username)
     _enforce_admin_limits(db, dbadmin, add_users=1)
+    _apply_admin_user_traffic_cap(new_user, dbadmin.username if dbadmin else None)
 
     # Force all active protocols/inbounds for every newly created user.
     active_protocols = [
@@ -92,9 +104,29 @@ def add_user(
         db.rollback()
         raise HTTPException(status_code=409, detail="User already exists")
 
-    bg.add_task(xray.operations.add_user, dbuser=dbuser)
+    bg.add_task(xray.operations.add_user, dbuser=dbuser.username)
     user = UserResponse.model_validate(dbuser)
     report.user_created(user=user, user_id=dbuser.id, by=admin, user_admin=dbuser.admin)
+    try:
+        crud.create_admin_action_log(
+            db=db,
+            admin=dbadmin,
+            action="user.create",
+            target_type="user",
+            target_username=user.username,
+            meta={"status": str(user.status), "expire": user.expire, "data_limit": user.data_limit},
+        )
+        if user.data_limit is not None and int(user.data_limit) > 0:
+            crud.create_admin_action_log(
+                db=db,
+                admin=dbadmin,
+                action="user.traffic_limit_set",
+                target_type="user",
+                target_username=user.username,
+                meta={"old": None, "new": int(user.data_limit)},
+            )
+    except Exception:
+        pass
     logger.info(f'New user "{dbuser.username}" added')
     return user
 
@@ -143,12 +175,17 @@ def modify_user(
             dbadmin = crud.get_admin(db, admin.username)
             _enforce_admin_limits(db, dbadmin)
 
+    _apply_admin_user_traffic_cap(modified_user, dbuser.admin.username if dbuser.admin else None)
+
     old_status = dbuser.status
+    old_expire = dbuser.expire
+    old_data_limit = dbuser.data_limit
+    old_note = dbuser.note
     dbuser = crud.update_user(db, dbuser, modified_user)
     user = UserResponse.model_validate(dbuser)
 
     if user.status in [UserStatus.active, UserStatus.on_hold]:
-        bg.add_task(xray.operations.update_user, dbuser=dbuser)
+        bg.add_task(xray.operations.update_user, dbuser=dbuser.username)
     else:
         bg.add_task(xray.operations.remove_user, dbuser=dbuser)
 
@@ -169,6 +206,37 @@ def modify_user(
             f'User "{dbuser.username}" status changed from {old_status} to {user.status}'
         )
 
+    try:
+        changes = {}
+        if old_status != user.status:
+            changes["status"] = {"from": str(old_status), "to": str(user.status)}
+        if old_expire != user.expire:
+            changes["expire"] = {"from": old_expire, "to": user.expire}
+        if old_data_limit != user.data_limit:
+            changes["data_limit"] = {"from": old_data_limit, "to": user.data_limit}
+        if old_note != user.note:
+            changes["note"] = {"from": bool(old_note), "to": bool(user.note)}
+        actor = crud.get_admin(db, admin.username)
+        crud.create_admin_action_log(
+            db=db,
+            admin=actor,
+            action="user.modify",
+            target_type="user",
+            target_username=user.username,
+            meta={"changes": changes} if changes else None,
+        )
+        if old_data_limit != user.data_limit:
+            crud.create_admin_action_log(
+                db=db,
+                admin=actor,
+                action="user.traffic_limit_set",
+                target_type="user",
+                target_username=user.username,
+                meta={"old": old_data_limit, "new": user.data_limit},
+            )
+    except Exception:
+        pass
+
     return user
 
 
@@ -180,6 +248,7 @@ def remove_user(
     admin: Admin = Depends(Admin.get_current),
 ):
     """Remove a user"""
+    username = dbuser.username
     crud.remove_user(db, dbuser)
     bg.add_task(xray.operations.remove_user, dbuser=dbuser)
 
@@ -189,6 +258,18 @@ def remove_user(
         user_admin=(Admin.model_validate(dbuser.admin) if dbuser.admin is not None else None),
         by=admin,
     )
+
+    try:
+        crud.create_admin_action_log(
+            db=db,
+            admin=(crud.get_admin(db, admin.username) or admin),
+            action="user.delete",
+            target_type="user",
+            target_username=username,
+            meta=None,
+        )
+    except Exception:
+        pass
 
     logger.info(f'User "{dbuser.username}" deleted')
     return {"detail": "User successfully deleted"}
@@ -202,14 +283,27 @@ def reset_user_data_usage(
     admin: Admin = Depends(Admin.get_current),
 ):
     """Reset user data usage"""
+    before_used = getattr(dbuser, "used_traffic", None)
     dbuser = crud.reset_user_data_usage(db=db, dbuser=dbuser)
     if dbuser.status in [UserStatus.active, UserStatus.on_hold]:
-        bg.add_task(xray.operations.add_user, dbuser=dbuser)
+        bg.add_task(xray.operations.add_user, dbuser=dbuser.username)
 
     user = UserResponse.model_validate(dbuser)
     bg.add_task(
         report.user_data_usage_reset, user=user, user_admin=dbuser.admin, by=admin
     )
+
+    try:
+        crud.create_admin_action_log(
+            db=db,
+            admin=(crud.get_admin(db, admin.username) or admin),
+            action="user.reset_usage",
+            target_type="user",
+            target_username=user.username,
+            meta={"used_traffic_before": before_used},
+        )
+    except Exception:
+        pass
 
     logger.info(f'User "{dbuser.username}"\'s usage was reset')
     return dbuser
@@ -226,13 +320,25 @@ def revoke_user_subscription(
     dbuser = crud.revoke_user_sub(db=db, dbuser=dbuser)
 
     if dbuser.status in [UserStatus.active, UserStatus.on_hold]:
-        bg.add_task(xray.operations.update_user, dbuser=dbuser)
+        bg.add_task(xray.operations.update_user, dbuser=dbuser.username)
     user = UserResponse.model_validate(dbuser)
     bg.add_task(
         report.user_subscription_revoked, user=user, user_admin=dbuser.admin, by=admin
     )
 
     logger.info(f'User "{dbuser.username}" subscription revoked')
+
+    try:
+        crud.create_admin_action_log(
+            db=db,
+            admin=(crud.get_admin(db, admin.username) or admin),
+            action="user.revoke_sub",
+            target_type="user",
+            target_username=user.username,
+            meta=None,
+        )
+    except Exception:
+        pass
 
     return user
 
@@ -261,6 +367,14 @@ def get_users(
                     status_code=400, detail=f'"{opt}" is not a valid sort option'
                 )
 
+    unassigned_only = False
+    admin_filter = None
+    admins_filter = owner if admin.is_sudo else [admin.username]
+
+    if admin.is_sudo and owner and "__sudo_self__" in owner:
+        unassigned_only = True
+        admins_filter = None
+
     users, count = crud.get_users(
         db=db,
         offset=offset,
@@ -269,7 +383,9 @@ def get_users(
         usernames=username,
         status=status,
         sort=sort,
-        admins=owner if admin.is_sudo else [admin.username],
+        admin=admin_filter,
+        admins=admins_filter,
+        unassigned_only=unassigned_only,
         return_with_count=True,
     )
 
@@ -322,7 +438,7 @@ def active_next_plan(
         )
 
     if dbuser.status in [UserStatus.active, UserStatus.on_hold]:
-        bg.add_task(xray.operations.add_user, dbuser=dbuser)
+        bg.add_task(xray.operations.add_user, dbuser=dbuser.username)
 
     user = UserResponse.model_validate(dbuser)
     bg.add_task(

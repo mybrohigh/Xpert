@@ -7,10 +7,11 @@ from pathlib import PosixPath
 from typing import Union
 
 import commentjson
-from sqlalchemy import func
+from sqlalchemy import String, cast, func
 
 from app.db import GetDB
 from app.db import models as db_models
+from app.db.base import IS_SQLITE
 from app.models.proxy import ProxyTypes
 from app.models.user import UserStatus
 from app.utils.crypto import get_cert_SANs
@@ -362,12 +363,16 @@ class XRayConfig(dict):
         config = self.copy()
 
         with GetDB() as db:
+            proxy_type_expr = func.lower(
+                db_models.Proxy.type if IS_SQLITE else cast(db_models.Proxy.type, String)
+            ).label('type')
             query = db.query(
+                db_models.Proxy.id.label('proxy_id'),
                 db_models.User.id,
                 db_models.User.username,
-                func.lower(db_models.Proxy.type).label('type'),
+                proxy_type_expr,
                 db_models.Proxy.settings,
-                func.group_concat(db_models.excluded_inbounds_association.c.inbound_tag).label('excluded_inbound_tags')
+                db_models.excluded_inbounds_association.c.inbound_tag.label('excluded_inbound_tag')
             ).join(
                 db_models.Proxy, db_models.User.id == db_models.Proxy.user_id
             ).outerjoin(
@@ -375,22 +380,33 @@ class XRayConfig(dict):
                 db_models.Proxy.id == db_models.excluded_inbounds_association.c.proxy_id
             ).filter(
                 db_models.User.status.in_([UserStatus.active, UserStatus.on_hold])
-            ).group_by(
-                func.lower(db_models.Proxy.type),
-                db_models.User.id,
-                db_models.User.username,
-                db_models.Proxy.settings,
             )
             result = query.all()
 
             grouped_data = defaultdict(list)
-
+            proxy_rows = {}
             for row in result:
-                grouped_data[row.type].append((
-                    row.id,
-                    row.username,
-                    row.settings,
-                    [i for i in row.excluded_inbound_tags.split(',') if i] if row.excluded_inbound_tags else None
+                key = (row.proxy_id, row.id, row.username, row.type)
+                if key not in proxy_rows:
+                    proxy_rows[key] = {
+                        "settings": row.settings,
+                        "excluded": set(),
+                    }
+                if row.excluded_inbound_tag:
+                    proxy_rows[key]["excluded"].add(row.excluded_inbound_tag)
+
+            for (_proxy_id, user_id, username, ptype), payload in proxy_rows.items():
+                settings_obj = payload["settings"]
+                if isinstance(settings_obj, str):
+                    try:
+                        settings_obj = json.loads(settings_obj)
+                    except Exception:
+                        settings_obj = {}
+                grouped_data[ptype].append((
+                    user_id,
+                    username,
+                    settings_obj,
+                    list(payload["excluded"]) if payload["excluded"] else None
                 ))
 
             for proxy_type, rows in grouped_data.items():

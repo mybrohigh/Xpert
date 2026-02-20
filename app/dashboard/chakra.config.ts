@@ -19,15 +19,248 @@ export const theme = extendTheme({
       900: "#224389",
     },
     gray: {
-      750: "#222C3B",
+      700: "#040609",
+      750: "#040609",
+    },
+  },
+  styles: {
+    global: {
+      ":root": {
+        "--lg-edge": "rgba(255,255,255,0.22)",
+        "--lg-edge-soft": "rgba(191,219,254,0.18)",
+      },
+      body: {
+        _dark: {
+          bg: "#040609",
+          backgroundImage:
+            "radial-gradient(1200px 500px at 10% -20%, rgba(77,99,255,0.18), transparent), radial-gradient(1000px 450px at 90% -10%, rgba(34,211,238,0.12), transparent)",
+          backgroundAttachment: "fixed",
+        },
+      },
+      ".chakra-card, .chakra-modal__content, .chakra-drawer__content, .chakra-menu__menu-list, .chakra-alert": {
+        _dark: {
+          position: "relative",
+          overflow: "hidden",
+          isolation: "isolate",
+          borderColor: "rgba(191, 219, 254, 0.28) !important",
+          boxShadow:
+            "inset 0 1px 0 rgba(255,255,255,0.18), inset 0 -1px 0 rgba(148,163,184,0.14), 0 14px 34px rgba(0,0,0,0.28)",
+        },
+      },
+      ".chakra-card::before, .chakra-modal__content::before, .chakra-drawer__content::before, .chakra-menu__menu-list::before, .chakra-alert::before": {
+        content: '""',
+        position: "absolute",
+        inset: "0",
+        pointerEvents: "none",
+        opacity: 0,
+        transition: "opacity .25s ease",
+      },
+      ".chakra-card::after, .chakra-modal__content::after, .chakra-drawer__content::after, .chakra-menu__menu-list::after, .chakra-alert::after": {
+        content: '""',
+        position: "absolute",
+        inset: "0",
+        pointerEvents: "none",
+        opacity: 0,
+        transition: "opacity .25s ease",
+      },
+      ".chakra-ui-dark .chakra-card::before, .chakra-ui-dark .chakra-modal__content::before, .chakra-ui-dark .chakra-drawer__content::before, .chakra-ui-dark .chakra-menu__menu-list::before, .chakra-ui-dark .chakra-alert::before": {
+        opacity: 1,
+        background:
+          "linear-gradient(145deg, rgba(255,255,255,0.14) 0%, rgba(255,255,255,0.02) 38%, rgba(191,219,254,0.10) 100%)",
+      },
+      ".chakra-ui-dark .chakra-card::after, .chakra-ui-dark .chakra-modal__content::after, .chakra-ui-dark .chakra-drawer__content::after, .chakra-ui-dark .chakra-menu__menu-list::after, .chakra-ui-dark .chakra-alert::after": {
+        opacity: 1,
+        boxShadow:
+          "inset 1px 1px 0 rgba(255,255,255,0.22), inset -1px -1px 0 rgba(148,163,184,0.18), inset 0 0 8px rgba(255,255,255,0.14)",
+      },
+      ".chakra-button, .chakra-input, .chakra-select, .chakra-textarea": {
+        _dark: {
+          position: "relative",
+          overflow: "hidden",
+          isolation: "isolate",
+          borderColor: "rgba(191, 219, 254, 0.28) !important",
+          boxShadow:
+            "inset 0 1px 0 rgba(255,255,255,0.14), inset 0 -1px 0 rgba(148,163,184,0.12)",
+        },
+      },
+      ".chakra-button::after, .chakra-input::after, .chakra-select::after, .chakra-textarea::after": {
+        content: '""',
+        position: "absolute",
+        inset: "0",
+        pointerEvents: "none",
+        opacity: 0,
+        transition: "opacity .2s ease",
+      },
+      ".chakra-ui-dark .chakra-input, .chakra-ui-dark .chakra-textarea, .chakra-ui-dark .chakra-select": {
+        bg: "rgba(19, 24, 45, 0.5) !important",
+        borderColor: "rgba(148, 163, 184, 0.5) !important",
+        color: "#dbe7ff",
+      },
+      ".chakra-ui-dark select.chakra-select": {
+        backgroundColor: "rgba(19, 24, 45, 0.92) !important",
+        color: "#dbe7ff !important",
+      },
+      ".chakra-ui-dark select.chakra-select option": {
+        backgroundColor: "#0f172a !important",
+        color: "#dbe7ff !important",
+      },
+      ".chakra-ui-dark select.chakra-select optgroup": {
+        backgroundColor: "#0f172a !important",
+        color: "#dbe7ff !important",
+      },
+      ".chakra-ui-dark .chakra-numberinput__field": {
+        bg: "rgba(19, 24, 45, 0.5) !important",
+        borderColor: "rgba(148, 163, 184, 0.5) !important",
+        color: "#dbe7ff",
+      },
+      ".chakra-ui-dark .chakra-accordion__item": {
+        bg: "rgba(13, 18, 36, 0.46)",
+        border: "1px solid rgba(191, 219, 254, 0.2)",
+        borderRadius: "10px",
+        backdropFilter: "blur(14px)",
+        WebkitBackdropFilter: "blur(14px)",
+        boxShadow:
+          "inset 0 1px 0 rgba(255,255,255,0.12), inset 0 -1px 0 rgba(148,163,184,0.1), 0 10px 22px rgba(0,0,0,0.24)",
+      },
+      ".chakra-ui-dark .chakra-accordion__button": {
+        borderRadius: "10px",
+      },
+      ".chakra-ui-dark .chakra-accordion__panel": {
+        borderTop: "1px solid rgba(191, 219, 254, 0.14)",
+      },
+      ".chakra-ui-dark .chakra-button::after, .chakra-ui-dark .chakra-input::after, .chakra-ui-dark .chakra-select::after, .chakra-ui-dark .chakra-textarea::after": {
+        opacity: 1,
+        boxShadow:
+          "inset 1px 1px 0 rgba(255,255,255,0.14), inset -1px -1px 0 rgba(148,163,184,0.12)",
+      },
+      "#filters": {
+        background: "transparent !important",
+        border: "none",
+        borderRadius: "0",
+        backdropFilter: "none",
+        WebkitBackdropFilter: "none",
+        width: "100%",
+        marginInline: "0",
+        transition: "background .25s ease, backdrop-filter .25s ease",
+      },
+      ".xpert-scrolled #filters": {
+        background: "rgba(15, 20, 40, 0.24) !important",
+        backdropFilter: "blur(18px)",
+        WebkitBackdropFilter: "blur(18px)",
+      },
+      ".xpert-page-shift": {
+        transition: "none",
+      },
+      "@media (min-width: 48em)": {
+        ".xpert-side-open #root": {
+          overflowX: "hidden",
+        },
+        ".xpert-side-open main": {
+          paddingRight: "336px",
+          boxSizing: "border-box",
+          transition: "padding-right .25s ease",
+        },
+      },
     },
   },
   components: {
+    Button: {
+      baseStyle: {
+        _dark: {
+          bg: "rgba(23, 28, 52, 0.42)",
+          color: "#dbe7ff",
+          border: "1px solid rgba(191, 219, 254, 0.3)",
+          backdropFilter: "blur(14px)",
+          WebkitBackdropFilter: "blur(14px)",
+          boxShadow:
+            "inset 0 1px 0 rgba(255,255,255,0.2), inset 0 -1px 0 rgba(148,163,184,0.12), 0 10px 26px rgba(0,0,0,0.28)",
+          transition: "all .2s ease",
+          _hover: {
+            bg: "rgba(30, 37, 67, 0.52)",
+            borderColor: "rgba(96, 165, 250, 0.42)",
+            boxShadow:
+              "inset 0 1px 0 rgba(255,255,255,0.24), 0 0 14px rgba(77,99,255,0.24)",
+          },
+          _active: {
+            bg: "rgba(36, 43, 78, 0.58)",
+          },
+        },
+      },
+    },
+    Card: {
+      baseStyle: {
+        container: {
+          _dark: {
+            bg: "rgba(15, 20, 40, 0.46)",
+            border: "1px solid rgba(191, 219, 254, 0.28)",
+            backdropFilter: "blur(16px)",
+            WebkitBackdropFilter: "blur(16px)",
+            boxShadow:
+              "inset 0 1px 0 rgba(255,255,255,0.2), inset 0 -1px 0 rgba(148,163,184,0.12), 0 14px 34px rgba(0,0,0,0.3)",
+          },
+        },
+      },
+    },
     Alert: {
       baseStyle: {
         container: {
           borderRadius: "6px",
           fontSize: "sm",
+          _dark: {
+            bg: "rgba(17, 24, 39, 0.5)",
+            border: "1px solid rgba(191, 219, 254, 0.28)",
+            backdropFilter: "blur(14px)",
+            WebkitBackdropFilter: "blur(14px)",
+          },
+        },
+      },
+    },
+    Menu: {
+      baseStyle: {
+        list: {
+          _dark: {
+            bg: "rgba(11, 16, 31, 0.74)",
+            borderColor: "rgba(191, 219, 254, 0.3)",
+            backdropFilter: "blur(16px)",
+            WebkitBackdropFilter: "blur(16px)",
+            boxShadow:
+              "inset 0 1px 0 rgba(255,255,255,0.2), inset 0 -1px 0 rgba(148,163,184,0.12), 0 14px 34px rgba(0,0,0,0.3)",
+          },
+        },
+        item: {
+          _dark: {
+            bg: "transparent",
+            _hover: {
+              bg: "rgba(77, 99, 255, 0.18)",
+            },
+            _focus: {
+              bg: "rgba(77, 99, 255, 0.2)",
+            },
+          },
+        },
+      },
+    },
+    Modal: {
+      baseStyle: {
+        dialog: {
+          _dark: {
+            bg: "rgba(11, 16, 31, 0.74)",
+            border: "1px solid rgba(191, 219, 254, 0.3)",
+            backdropFilter: "blur(16px)",
+            WebkitBackdropFilter: "blur(16px)",
+          },
+        },
+      },
+    },
+    Drawer: {
+      baseStyle: {
+        dialog: {
+          _dark: {
+            bg: "rgba(11, 16, 31, 0.74)",
+            borderLeft: "1px solid rgba(191, 219, 254, 0.3)",
+            backdropFilter: "blur(16px)",
+            WebkitBackdropFilter: "blur(16px)",
+          },
         },
       },
     },
@@ -37,6 +270,9 @@ export const theme = extendTheme({
           _dark: {
             borderColor: "gray.600",
             borderRadius: "6px",
+            bg: "rgba(19, 24, 45, 0.5)",
+            backdropFilter: "blur(12px)",
+            WebkitBackdropFilter: "blur(12px)",
           },
           _light: {
             borderRadius: "6px",
@@ -75,12 +311,73 @@ export const theme = extendTheme({
           },
           _dark: {
             borderColor: "gray.600",
+            bg: "rgba(19, 24, 45, 0.5)",
+            backdropFilter: "blur(12px)",
+            WebkitBackdropFilter: "blur(12px)",
             _disabled: {
               color: "gray.400",
               borderColor: "gray.500",
             },
             _placeholder: {
               color: "gray.500",
+            },
+          },
+        },
+      },
+    },
+    Textarea: {
+      baseStyle: {
+        _focusVisible: {
+          boxShadow: "none",
+          borderColor: "primary.200",
+          outlineColor: "primary.200",
+        },
+        _dark: {
+          borderColor: "gray.600",
+          bg: "rgba(19, 24, 45, 0.5)",
+          backdropFilter: "blur(12px)",
+          WebkitBackdropFilter: "blur(12px)",
+          _disabled: {
+            color: "gray.400",
+            borderColor: "gray.500",
+          },
+          _placeholder: {
+            color: "gray.500",
+          },
+        },
+      },
+    },
+    NumberInput: {
+      baseStyle: {
+        field: {
+          _focusVisible: {
+            boxShadow: "none",
+            borderColor: "primary.200",
+            outlineColor: "primary.200",
+          },
+          _dark: {
+            borderColor: "gray.600",
+            bg: "rgba(19, 24, 45, 0.5)",
+            color: "#dbe7ff",
+            backdropFilter: "blur(12px)",
+            WebkitBackdropFilter: "blur(12px)",
+            _placeholder: {
+              color: "gray.500",
+            },
+          },
+        },
+        stepperGroup: {
+          _dark: {
+            bg: "rgba(19, 24, 45, 0.35)",
+            borderColor: "rgba(148, 163, 184, 0.45)",
+          },
+        },
+        stepper: {
+          _dark: {
+            borderColor: "rgba(148, 163, 184, 0.35)",
+            color: "#dbe7ff",
+            _hover: {
+              bg: "rgba(77, 99, 255, 0.18)",
             },
           },
         },
@@ -146,7 +443,8 @@ export const theme = extendTheme({
               },
               _dark: {
                 "& > td": {
-                  bg: "gray.750",
+                  bg: "rgba(37, 55, 112, 0.34)",
+                  boxShadow: "none",
                 },
               },
             },

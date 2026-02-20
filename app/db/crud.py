@@ -14,6 +14,7 @@ from app.db.models import (
     JWT,
     TLS,
     Admin,
+    AdminActionLog,
     AdminUsageLogs,
     NextPlan,
     Node,
@@ -41,6 +42,34 @@ from app.models.user import (
     UserStatus,
     UserUsageResponse,
 )
+
+
+def create_admin_action_log(
+    db: Session,
+    admin: Admin,
+    action: str,
+    target_type: Optional[str] = None,
+    target_username: Optional[str] = None,
+    meta: Optional[dict] = None,
+) -> AdminActionLog:
+    """
+    Lightweight audit log for admin actions.
+    Keep meta small; avoid storing secrets (tokens, full URLs, passwords).
+    """
+    admin_username = getattr(admin, "username", None) or ""
+    item = AdminActionLog(
+        admin_id=getattr(admin, "id", None),
+        admin_username=admin_username,
+        action=action,
+        target_type=target_type,
+        target_username=target_username,
+        meta=meta or None,
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return item
+
 from app.models.user_template import UserTemplateCreate, UserTemplateModify
 from app.utils.helpers import calculate_expiration_days, calculate_usage_percent
 from config import NOTIFY_DAYS_LEFT, NOTIFY_REACHED_USAGE_PERCENT, USERS_AUTODELETE_DAYS
@@ -230,6 +259,7 @@ def get_users(db: Session,
               sort: Optional[List[UsersSortingOptions]] = None,
               admin: Optional[Admin] = None,
               admins: Optional[List[str]] = None,
+              unassigned_only: bool = False,
               reset_strategy: Optional[Union[UserDataLimitResetStrategy, list]] = None,
               return_with_count: bool = False) -> Union[List[User], Tuple[List[User], int]]:
     """
@@ -276,6 +306,8 @@ def get_users(db: Session,
 
     if admins:
         query = query.filter(User.admin.has(Admin.username.in_(admins)))
+    if unassigned_only:
+        query = query.filter(User.admin == None)
 
     if return_with_count:
         count = query.count()
@@ -1073,6 +1105,43 @@ def get_admins(db: Session,
     if limit:
         query = query.limit(limit)
     return query.all()
+
+
+def get_admin_action_logs(
+    db: Session,
+    admin_username: Optional[str] = None,
+    offset: int = 0,
+    limit: int = 100,
+) -> List[AdminActionLog]:
+    query = db.query(AdminActionLog)
+    if admin_username:
+        query = query.filter(AdminActionLog.admin_username == admin_username)
+    query = query.order_by(AdminActionLog.created_at.desc())
+    if offset:
+        query = query.offset(offset)
+    if limit:
+        query = query.limit(limit)
+    return query.all()
+
+
+def count_admin_action_logs(db: Session, admin_username: Optional[str] = None) -> int:
+    query = db.query(func.count(AdminActionLog.id))
+    if admin_username:
+        query = query.filter(AdminActionLog.admin_username == admin_username)
+    return int(query.scalar() or 0)
+
+
+def get_admin_action_counts(
+    db: Session,
+    admin_username: str,
+    since: Optional[datetime] = None,
+) -> List[Tuple[str, int]]:
+    query = db.query(AdminActionLog.action, func.count(AdminActionLog.id))
+    query = query.filter(AdminActionLog.admin_username == admin_username)
+    if since is not None:
+        query = query.filter(AdminActionLog.created_at >= since)
+    query = query.group_by(AdminActionLog.action).order_by(func.count(AdminActionLog.id).desc())
+    return [(a, int(c)) for a, c in query.all()]
 
 
 def reset_admin_usage(db: Session, dbadmin: Admin) -> int:

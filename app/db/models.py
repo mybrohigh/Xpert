@@ -6,10 +6,12 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     Column,
+    Date,
     DateTime,
     Enum,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Table,
@@ -21,7 +23,7 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql.expression import select, text
 
 from app import xray
-from app.db.base import Base
+from app.db.base import Base, IS_SQLITE
 from app.models.node import NodeStatus
 from app.models.proxy import (
     ProxyHostALPN,
@@ -30,6 +32,8 @@ from app.models.proxy import (
     ProxyTypes,
 )
 from app.models.user import ReminderType, UserDataLimitResetStrategy, UserStatus
+
+SQLITE_NOCASE = "NOCASE" if IS_SQLITE else None
 
 
 class Admin(Base):
@@ -60,11 +64,51 @@ class AdminUsageLogs(Base):
     reset_at = Column(DateTime, default=datetime.utcnow)
 
 
+class AdminActionLog(Base):
+    __tablename__ = "admin_action_logs"
+
+    id = Column(Integer, primary_key=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+    admin_id = Column(Integer, ForeignKey("admins.id"), index=True, nullable=True)
+    admin_username = Column(String(34), index=True, nullable=False)
+
+    action = Column(String(64), index=True, nullable=False)
+    target_type = Column(String(32), index=True, nullable=True)
+    target_username = Column(String(34), index=True, nullable=True)
+
+    meta = Column(JSON, nullable=True)
+
+
+class TrafficUsage(Base):
+    __tablename__ = "traffic_usage"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_token",
+            "config_server",
+            "config_port",
+            "date_collected",
+            name="uq_traffic_usage_day_key",
+        ),
+        Index("idx_traffic_usage_server_port", "config_server", "config_port"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    user_token = Column(String(128), nullable=False, index=True)
+    config_server = Column(String(255), nullable=False)
+    config_port = Column(Integer, nullable=False)
+    protocol = Column(String(64), nullable=False)
+    bytes_uploaded = Column(BigInteger, nullable=False, default=0)
+    bytes_downloaded = Column(BigInteger, nullable=False, default=0)
+    date_collected = Column(Date, nullable=False, index=True)
+    timestamp = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+
+
 class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True)
-    username = Column(String(34, collation='NOCASE'), unique=True, index=True)
+    username = Column(String(34, collation=SQLITE_NOCASE), unique=True, index=True)
     proxies = relationship("Proxy", back_populates="user", cascade="all, delete-orphan")
     status = Column(Enum(UserStatus), nullable=False, default=UserStatus.active)
     used_traffic = Column(BigInteger, default=0)
@@ -299,7 +343,7 @@ class Node(Base):
     __tablename__ = "nodes"
 
     id = Column(Integer, primary_key=True)
-    name = Column(String(256, collation='NOCASE'), unique=True)
+    name = Column(String(256, collation=SQLITE_NOCASE), unique=True)
     address = Column(String(256), unique=False, nullable=False)
     port = Column(Integer, unique=False, nullable=False)
     api_port = Column(Integer, unique=False, nullable=False)

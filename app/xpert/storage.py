@@ -91,6 +91,11 @@ class XpertStorage:
         new_sources = [s for s in sources if s.id != source_id]
         if len(new_sources) < len(sources):
             self._save_json(self.sources_file, [s.to_dict() for s in new_sources])
+            # Also remove configs that belong to this source, so Active Configurations
+            # does not keep orphan rows after source deletion.
+            configs = self.get_configs()
+            filtered_configs = [c for c in configs if c.source_id != source_id]
+            self.save_configs(filtered_configs)
             return True
         return False
     
