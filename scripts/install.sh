@@ -298,11 +298,25 @@ ensure_modern_node() {
   local codename
   codename="$(. /etc/os-release && echo "${VERSION_CODENAME:-}")"
   [[ -n "$codename" ]] || codename="nodistro"
+
   cat >/etc/apt/sources.list.d/nodesource.list <<EOF
 deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x ${codename} main
 EOF
 
-  APT_UPDATED=0
+  # NodeSource can return 404 for distro codenames on some mirrors.
+  # Fallback to "nodistro" to keep installation stable.
+  if ! apt-get update -y; then
+    if [[ "$codename" != "nodistro" ]]; then
+      log "NodeSource repo for '${codename}' is unavailable, retrying with 'nodistro'..."
+      cat >/etc/apt/sources.list.d/nodesource.list <<EOF
+deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main
+EOF
+      apt-get update -y || fail "Failed to refresh apt indexes for NodeSource repository"
+    else
+      fail "Failed to refresh apt indexes for NodeSource repository"
+    fi
+  fi
+  APT_UPDATED=1
   apt_install nodejs
   hash -r || true
 
