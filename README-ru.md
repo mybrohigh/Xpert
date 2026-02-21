@@ -108,53 +108,53 @@ Marzban удобен в использовании, многофункциона
 
 # Руководство по установке
 
-Установка Marzban с базой данных SQLite (по умолчанию):
+Рекомендуемая установка Xpert:
 
 ```bash
-sudo bash -c "$(curl -sL https://github.com/Gozargah/Marzban-scripts/raw/master/marzban.sh)" @ install
+git clone https://github.com/mybrohigh/Xpert.git
+cd Xpert
+sudo bash scripts/install.sh install --service-name xpert --install-dir /opt/xpert
 ```
 
-Установка Marzban с базой данных MySQL:
+Этот установщик:
+- создаёт `.venv` и ставит backend-зависимости
+- выполняет `alembic upgrade head`
+- собирает dashboard (`npm ci`, `npm run build`) и копирует `dist -> build`
+- создаёт/перезапускает systemd-сервис `xpert` (если не указан `--skip-systemd`)
 
 ```bash
-sudo bash -c "$(curl -sL https://github.com/Gozargah/Marzban-scripts/raw/master/marzban.sh)" @ install --database mysql
+sudo bash scripts/install.sh install --skip-frontend
+sudo bash scripts/install.sh install --skip-systemd
+sudo bash scripts/install.sh install --skip-migrations
 ```
 
-Установка Marzban с базой данных MariaDB:
+После установки:
+
+- Проверка сервиса:
+
 ```bash
-sudo bash -c "$(curl -sL https://github.com/Gozargah/Marzban-scripts/raw/master/marzban.sh)" @ install --database mariadb
+sudo systemctl status xpert
+sudo journalctl -u xpert -n 120 --no-pager
 ```
 
-Когда установка будет завершена:
-- Вы увидите логи, которые можно остановить, нажав `Ctrl+C` или закрыв терминал.
-- Файлы Marzban будут размещены по адресу `/opt/marzban`.
-- Файл конфигурации будет размещен по адресу `/opt/marzban/.env` (см. [Конфигурация](#конфигурация)).
-- Файлы с данными будут размещены по адресу `/var/lib/marzban`.
-- По соображениям безопасности, панель управления Marzban недоступна через IP-адрес. Поэтому вам необходимо [получить SSL-сертификат](https://gozargah.github.io/marzban/ru/examples/issue-ssl-certificate) и получить доступ к панели управления Marzban, открыв веб-браузер и перейдя по адресу `https://YOUR_DOMAIN:8000/dashboard/` (замените YOUR_DOMAIN на ваш фактический домен).
-- Вы также можете использовать перенаправление портов SSH для локального доступа к панели управления Marzban без домена. Замените `user@serverip` на ваше фактическое имя пользователя SSH и IP-адрес сервера и выполните следующую команду:
+- URL панели:
+
+`http://SERVER_IP:8000/dashboard/`
+
+- Локальный доступ через SSH-туннель (опционально):
 
 ```bash
 ssh -L 8000:localhost:8000 user@serverip
 ```
 
-Наконец, введите следующую ссылку в ваш браузер, чтобы получить доступ к панели управления Marzban:
+После этого откройте:
 
 http://localhost:8000/dashboard/
 
-Вы потеряете доступ к панели управления, как только закроете терминал SSH. Поэтому этот метод рекомендуется использовать только для тестирования.
-
-Далее, Вам нужно создать главного администратора для входа в панель управления Marzban, выполнив следующую команду: 
+Для справки по установщику:
 
 ```bash
-marzban cli admin create --sudo
-```
-
-Готово! Теперь Вы можете войти, используя данные своей учетной записи.
-
-Для того, чтобы увидеть справочное сообщение от скрипта Marzban, выполните команду:
-
-```bash
-marzban --help
+bash scripts/install.sh --help
 ```
 
 Если Вы хотите запустить проект, используя его исходный код, обратитесь к разделу ниже
@@ -169,13 +169,14 @@ marzban --help
 bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
 ```
 
-Клонируйте этот проект и установите зависимости (Вам нужен Python >= 3.8):
+Клонируйте этот проект и установите зависимости (нужен Python >= 3.8):
 
 ```bash
-git clone https://github.com/Gozargah/Marzban.git
-cd Marzban
-wget -qO- https://bootstrap.pypa.io/get-pip.py | python3 -
-python3 -m pip install -r requirements.txt
+git clone https://github.com/mybrohigh/Xpert.git
+cd Xpert
+python3 -m venv .venv
+. .venv/bin/activate
+pip install -r requirements.txt
 ```
 
 В качестве альтернативы для создания виртуальной среды можно использовать [Python Virtualenv](https://pypi.org/project/virtualenv/).
@@ -183,15 +184,15 @@ python3 -m pip install -r requirements.txt
 Затем выполните следующую команду для запуска скрипта миграции базы данных:
 
 ```bash
-alembic upgrade head
+.venv/bin/alembic upgrade head
 ```
 
-Если Вы хотите использовать `marzban-cli`, необходимо связать его с файлом в `$PATH`, сделать его исполняемым и установить:
+Если хотите использовать CLI, можно добавить его в `$PATH` как `xpert-cli`:
 
 ```bash
-sudo ln -s $(pwd)/marzban-cli.py /usr/bin/marzban-cli
-sudo chmod +x /usr/bin/marzban-cli
-marzban-cli completion install
+sudo ln -s $(pwd)/marzban-cli.py /usr/bin/xpert-cli
+sudo chmod +x /usr/bin/xpert-cli
+xpert-cli completion install
 ```
 
 Теперь настало время настройки.
@@ -213,11 +214,11 @@ nano .env
 python3 main.py
 ```
 
-Для запуска с помощью linux systemctl (скопируйте файл marzban.service в `/var/lib/marzban/marzban.service`):
+Для создания/обновления systemd-сервиса через install-скрипт:
 
 ```
-systemctl enable /var/lib/marzban/marzban.service
-systemctl start marzban
+sudo bash scripts/install.sh install --skip-frontend --service-name xpert
+sudo systemctl restart xpert
 ```
 
 Для использования с nginx:
