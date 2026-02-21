@@ -272,7 +272,7 @@ node_major() {
 }
 
 ensure_modern_node() {
-  local min_major=18
+  local min_major=20
   local major
   local nodesource_list="/etc/apt/sources.list.d/nodesource.list"
   major="$(node_major)"
@@ -323,6 +323,22 @@ EOF
     fi
   fi
   APT_UPDATED=1
+
+  # Ubuntu's distro node packages conflict with NodeSource nodejs files.
+  # Remove them before installing Node 20 from NodeSource.
+  if dpkg -s libnode-dev >/dev/null 2>&1 || dpkg -s nodejs-doc >/dev/null 2>&1 || dpkg -s npm >/dev/null 2>&1; then
+    log "Removing conflicting distro Node.js packages (libnode-dev/nodejs-doc/npm)..."
+    apt-get remove -y libnode-dev nodejs-doc npm || true
+  fi
+  if dpkg -s nodejs >/dev/null 2>&1; then
+    log "Removing old distro nodejs package before NodeSource install..."
+    apt-get remove -y nodejs || true
+  fi
+
+  # Recover from half-configured dpkg state left by previous failed attempts.
+  dpkg --configure -a || true
+  apt-get -f install -y || true
+
   apt_install nodejs
   hash -r || true
 
