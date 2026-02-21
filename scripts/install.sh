@@ -215,8 +215,13 @@ PY
       rm -rf "$venv_probe_dir"
       fail "python venv is not usable. Install packages manually: ${py_venv_pkg} python3-venv python3-pip"
     fi
-    log "Installing missing Python venv packages (${py_venv_pkg}, python3-venv, python3-pip)..."
-    apt_install "$py_venv_pkg" python3-venv python3-pip
+
+    local venv_pkgs=("python3-venv" "python3-pip")
+    if command -v apt-cache >/dev/null 2>&1 && apt-cache show "$py_venv_pkg" >/dev/null 2>&1; then
+      venv_pkgs=("$py_venv_pkg" "${venv_pkgs[@]}")
+    fi
+    log "Installing missing Python venv packages (${venv_pkgs[*]})..."
+    apt_install "${venv_pkgs[@]}"
     rm -rf "$venv_probe_dir"
     venv_probe_dir="$(mktemp -d)"
     "$PYTHON_BIN" -m venv "${venv_probe_dir}/probe" >/dev/null 2>&1 || {
