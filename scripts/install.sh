@@ -199,10 +199,32 @@ prepare_env_file() {
 setup_python() {
   ensure_cmd "$PYTHON_BIN" python3
 
-  # Some minimal images ship python3 without venv support package.
-  if ! "$PYTHON_BIN" -m venv --help >/dev/null 2>&1; then
-    apt_install python3-venv python3-pip
+  # Some images have python3 but miss ensurepip/venv runtime packages.
+  local py_mm py_venv_pkg
+  py_mm="$("$PYTHON_BIN" - <<'PY'
+import sys
+print(f"{sys.version_info.major}.{sys.version_info.minor}")
+PY
+)"
+  py_venv_pkg="python${py_mm}-venv"
+
+  local venv_probe_dir
+  venv_probe_dir="$(mktemp -d)"
+  if ! "$PYTHON_BIN" -m venv "${venv_probe_dir}/probe" >/dev/null 2>&1; then
+    if [[ "$SKIP_APT" -eq 1 ]]; then
+      rm -rf "$venv_probe_dir"
+      fail "python venv is not usable. Install packages manually: ${py_venv_pkg} python3-venv python3-pip"
+    fi
+    log "Installing missing Python venv packages (${py_venv_pkg}, python3-venv, python3-pip)..."
+    apt_install "$py_venv_pkg" python3-venv python3-pip
+    rm -rf "$venv_probe_dir"
+    venv_probe_dir="$(mktemp -d)"
+    "$PYTHON_BIN" -m venv "${venv_probe_dir}/probe" >/dev/null 2>&1 || {
+      rm -rf "$venv_probe_dir"
+      fail "Unable to create virtualenv even after installing venv packages"
+    }
   fi
+  rm -rf "$venv_probe_dir"
 
   if [[ ! -x "$APP_DIR/.venv/bin/python" || ! -x "$APP_DIR/.venv/bin/pip" ]]; then
     if [[ -d "$APP_DIR/.venv" ]]; then
