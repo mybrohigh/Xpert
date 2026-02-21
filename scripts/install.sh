@@ -274,6 +274,7 @@ node_major() {
 ensure_modern_node() {
   local min_major=18
   local major
+  local nodesource_list="/etc/apt/sources.list.d/nodesource.list"
   major="$(node_major)"
   if command -v npm >/dev/null 2>&1 && [[ "$major" =~ ^[0-9]+$ ]] && (( major >= min_major )); then
     log "Using Node.js $(node -v) and npm $(npm -v)"
@@ -285,6 +286,11 @@ ensure_modern_node() {
   fi
   if [[ "$EUID" -ne 0 ]]; then
     fail "Root privileges are required to install Node.js"
+  fi
+
+  # Remove stale NodeSource entry from failed previous runs before first apt update.
+  if [[ -f "$nodesource_list" ]]; then
+    rm -f "$nodesource_list"
   fi
 
   log "Installing Node.js 20.x (required for Vite build)..."
@@ -299,7 +305,7 @@ ensure_modern_node() {
   codename="$(. /etc/os-release && echo "${VERSION_CODENAME:-}")"
   [[ -n "$codename" ]] || codename="nodistro"
 
-  cat >/etc/apt/sources.list.d/nodesource.list <<EOF
+  cat >"$nodesource_list" <<EOF
 deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x ${codename} main
 EOF
 
@@ -308,7 +314,7 @@ EOF
   if ! apt-get update -y; then
     if [[ "$codename" != "nodistro" ]]; then
       log "NodeSource repo for '${codename}' is unavailable, retrying with 'nodistro'..."
-      cat >/etc/apt/sources.list.d/nodesource.list <<EOF
+      cat >"$nodesource_list" <<EOF
 deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main
 EOF
       apt-get update -y || fail "Failed to refresh apt indexes for NodeSource repository"
