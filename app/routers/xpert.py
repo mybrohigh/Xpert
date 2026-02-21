@@ -1255,6 +1255,7 @@ async def create_crypto_link(
     db: Session = Depends(get_db),
 ):
     try:
+        admin_is_sudo = _effective_admin_is_sudo(db, admin)
         payload = {"url": data.url.strip()}
 
         hwid_value = (data.hwid or "").strip()
@@ -1277,8 +1278,9 @@ async def create_crypto_link(
                 pass
 
         # For HWID options we must be able to parse and validate THIS panel /sub token.
+        # For plain encryption (without HWID options) we allow arbitrary URLs.
         username_from_url = None
-        if hwid_value or (hwid_limit is not None) or (not admin.is_sudo):
+        if hwid_value or (hwid_limit is not None):
             try:
                 from app.xpert.hwid_lock_service import extract_subscription_token
                 from app.utils.jwt import get_subscription_payload
@@ -1289,10 +1291,12 @@ async def create_crypto_link(
             except Exception:
                 username_from_url = None
 
-        # sudo=n: can encrypt ONLY own Marzban /sub link from this panel (with or without HWID options)
-        if not admin.is_sudo:
+        # sudo=n:
+        # - plain encryption is allowed for arbitrary links
+        # - HWID options are allowed only for own panel /sub links
+        if not admin_is_sudo and (hwid_value or (hwid_limit is not None)):
             if not username_from_url:
-                raise HTTPException(status_code=403, detail="Only this panel Marzban /sub links are allowed")
+                raise HTTPException(status_code=403, detail="HWID options require a valid panel /sub URL")
 
             dbuser = crud.get_user(db, username_from_url)
             if not dbuser or not getattr(dbuser, "admin", None) or dbuser.admin.username != admin.username:
@@ -1334,24 +1338,36 @@ async def create_crypto_link(
         except Exception:
             pass
 
-        resp = requests.post("https://crypto.happ.su/api-v2.php", json=payload, timeout=15)
-        resp.raise_for_status()
-        content_type = resp.headers.get("content-type", "")
-        if "application/json" in content_type:
+        provider_errors = []
+        for endpoint in ("https://crypto.happ.su/api-v2.php", "https://crypto.happ.su/api.php"):
             try:
-                j = resp.json()
-                if isinstance(j, str):
-                    return {"link": j}
-                if isinstance(j, dict):
-                    for key in ("url", "link", "result", "data", "encrypted", "encrypted_link"):
-                        if key in j and isinstance(j[key], str):
-                            return {"link": j[key]}
-                    return j
-            except Exception:
-                pass
+                resp = requests.post(endpoint, json=payload, timeout=15)
+                resp.raise_for_status()
+                content_type = (resp.headers.get("content-type", "") or "").lower()
+                if "application/json" in content_type:
+                    try:
+                        j = resp.json()
+                        if isinstance(j, str) and j.strip():
+                            return {"link": j.strip()}
+                        if isinstance(j, dict):
+                            for key in ("url", "link", "result", "data", "encrypted", "encrypted_link"):
+                                if key in j and isinstance(j[key], str) and j[key].strip():
+                                    return {"link": j[key].strip()}
+                            detail = j.get("detail") if isinstance(j.get("detail"), str) else None
+                            if detail:
+                                provider_errors.append(f"{endpoint}: {detail}")
+                    except Exception:
+                        pass
 
-        text = resp.text.strip()
-        return {"link": text}
+                text = (resp.text or "").strip()
+                if text:
+                    return {"link": text}
+                provider_errors.append(f"{endpoint}: empty response")
+            except Exception as exc:
+                provider_errors.append(f"{endpoint}: {exc}")
+
+        err = provider_errors[-1] if provider_errors else "unknown upstream error"
+        raise HTTPException(status_code=502, detail=f"Crypto provider unavailable ({err})")
     except HTTPException:
         raise
     except Exception:
@@ -1683,17 +1699,17 @@ async def admin_manager_admins(
     admin: Admin = Depends(Admin.get_current),
     db: Session = Depends(get_db),
 ):
-    if not admin.is_sudo:
-        raise HTTPException(status_code=403, detail="You're not allowed")
+    admin_is_sudo = _effective_admin_is_sudo(db, admin)
 
-    cache_key = "xpert:admin_manager:admins:v1"
+    cache_key = f"xpert:admin_manager:admins:v2:{admin.username}:{int(admin_is_sudo)}"
     cached = _cache_get_json(cache_key)
     if isinstance(cached, list):
         return cached
 
     since = datetime.utcnow() - timedelta(hours=24)
     out: List[AdminSummaryItem] = []
-    for dbadmin in crud.get_admins(db=db):
+    admins_to_show = crud.get_admins(db=db) if admin_is_sudo else [crud.get_admin(db=db, username=admin.username) or admin]
+    for dbadmin in admins_to_show:
         counts = crud.get_admin_action_counts(db, dbadmin.username, since=since)
         actions_24h = int(sum(c for _, c in counts))
         total_users = int(crud.get_users_count(db=db, admin=dbadmin))
@@ -1718,7 +1734,8 @@ async def admin_manager_actions(
     admin: Admin = Depends(Admin.get_current),
     db: Session = Depends(get_db),
 ):
-    if not admin.is_sudo:
+    admin_is_sudo = _effective_admin_is_sudo(db, admin)
+    if not admin_is_sudo and admin_username != admin.username:
         raise HTTPException(status_code=403, detail="You're not allowed")
 
     if limit < 1:
@@ -1728,7 +1745,7 @@ async def admin_manager_actions(
     if offset < 0:
         offset = 0
 
-    cache_key = f"xpert:admin_manager:actions:v2:{admin_username}:{offset}:{limit}"
+    cache_key = f"xpert:admin_manager:actions:v3:{admin.username}:{admin_username}:{offset}:{limit}:{int(admin_is_sudo)}"
     cached = _cache_get_json(cache_key)
     if isinstance(cached, dict) and "items" in cached and "total" in cached:
         return cached
@@ -1769,10 +1786,11 @@ async def admin_manager_lifetime_stats(
     admin: Admin = Depends(Admin.get_current),
     db: Session = Depends(get_db),
 ):
-    if not admin.is_sudo:
+    admin_is_sudo = _effective_admin_is_sudo(db, admin)
+    if not admin_is_sudo and admin_username != admin.username:
         raise HTTPException(status_code=403, detail="You're not allowed")
 
-    cache_key = f"xpert:admin_manager:lifetime:v1:{admin_username}"
+    cache_key = f"xpert:admin_manager:lifetime:v2:{admin.username}:{admin_username}:{int(admin_is_sudo)}"
     cached = _cache_get_json(cache_key)
     if isinstance(cached, dict) and "created_count" in cached and "extended_count" in cached and "deleted_count" in cached:
         return cached
