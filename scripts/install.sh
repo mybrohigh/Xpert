@@ -54,7 +54,7 @@ Options (for install):
   --skip-frontend           Skip dashboard npm build
   --skip-systemd            Do not create/restart systemd service
   --skip-migrations         Skip alembic upgrade head
-  --skip-xray-check         Skip warning if xray binary is missing
+  --skip-xray-check         Skip Xray install/check step
   -h, --help                Show this help
 
 Environment overrides:
@@ -440,15 +440,122 @@ read_env_value() {
   printf '%s' "$value"
 }
 
+resolve_path_from_env() {
+  local raw="$1"
+  if [[ "$raw" == /* ]]; then
+    printf '%s' "$raw"
+  else
+    printf '%s/%s' "$APP_DIR" "${raw#./}"
+  fi
+}
+
+resolve_xray_path() {
+  local value
+  value="$(read_env_value "XRAY_EXECUTABLE_PATH" "$APP_DIR/.env")"
+  value="${value:-/usr/local/bin/xray}"
+  resolve_path_from_env "$value"
+}
+
+resolve_xray_assets_path() {
+  local value
+  value="$(read_env_value "XRAY_ASSETS_PATH" "$APP_DIR/.env")"
+  value="${value:-/usr/local/share/xray}"
+  resolve_path_from_env "$value"
+}
+
+install_xray() {
+  local arch
+  local url
+  local tmp_dir
+  local xray_path
+  local assets_path
+
+  if [[ "$SKIP_APT" -eq 1 ]]; then
+    fail "Xray is required but --skip-apt is set. Install Xray manually and rerun."
+  fi
+  if [[ "$EUID" -ne 0 ]]; then
+    fail "Root privileges are required to install Xray"
+  fi
+
+  case "$(uname -m)" in
+    x86_64|amd64)
+      arch="64"
+      ;;
+    aarch64|arm64)
+      arch="arm64-v8a"
+      ;;
+    armv7l|armv7*)
+      arch="arm32-v7a"
+      ;;
+    s390x)
+      arch="s390x"
+      ;;
+    *)
+      fail "Unsupported architecture for automatic Xray install: $(uname -m)"
+      ;;
+  esac
+
+  xray_path="$(resolve_xray_path)"
+  assets_path="$(resolve_xray_assets_path)"
+  url="https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-${arch}.zip"
+
+  apt_install curl unzip
+
+  tmp_dir="$(mktemp -d)"
+  log "Downloading Xray core package (${arch})..."
+  if ! curl -fL "$url" -o "${tmp_dir}/xray.zip"; then
+    rm -rf "$tmp_dir"
+    fail "Unable to download Xray from ${url}"
+  fi
+  if ! unzip -qo "${tmp_dir}/xray.zip" -d "${tmp_dir}/pkg"; then
+    rm -rf "$tmp_dir"
+    fail "Unable to unpack Xray package"
+  fi
+  if [[ ! -f "${tmp_dir}/pkg/xray" ]]; then
+    rm -rf "$tmp_dir"
+    fail "Xray package is missing xray binary"
+  fi
+
+  install -d -m 0755 "$(dirname "$xray_path")"
+  install -m 0755 "${tmp_dir}/pkg/xray" "$xray_path"
+
+  install -d -m 0755 "$assets_path"
+  if [[ -f "${tmp_dir}/pkg/geoip.dat" ]]; then
+    install -m 0644 "${tmp_dir}/pkg/geoip.dat" "${assets_path}/geoip.dat"
+  fi
+  if [[ -f "${tmp_dir}/pkg/geosite.dat" ]]; then
+    install -m 0644 "${tmp_dir}/pkg/geosite.dat" "${assets_path}/geosite.dat"
+  fi
+
+  rm -rf "$tmp_dir"
+  log "Xray installed at ${xray_path}"
+}
+
 check_xray() {
+  local xray_path
+  local xray_version
+
   if [[ "$SKIP_XRAY_CHECK" -eq 1 ]]; then
     return 0
   fi
-  if command -v xray >/dev/null 2>&1; then
-    return 0
+
+  xray_path="$(resolve_xray_path)"
+  if [[ ! -x "$xray_path" ]]; then
+    log "Xray binary not found at ${xray_path}. Installing..."
+    install_xray
+    xray_path="$(resolve_xray_path)"
   fi
-  log "WARNING: xray binary not found in PATH."
-  log "Install Xray before production use: https://github.com/XTLS/Xray-install"
+
+  if [[ ! -x "$xray_path" ]]; then
+    fail "Xray installation failed. Expected binary at ${xray_path}"
+  fi
+
+  xray_version="$("$xray_path" version 2>/dev/null | head -n1 || true)"
+  if [[ -n "$xray_version" ]]; then
+    log "Using ${xray_version}"
+  else
+    log "Using Xray binary: ${xray_path}"
+  fi
 }
 
 print_summary() {
