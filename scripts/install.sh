@@ -197,14 +197,31 @@ prepare_env_file() {
 }
 
 setup_python() {
-  ensure_cmd "$PYTHON_BIN" python3 python3-venv python3-pip
-  if [[ ! -d "$APP_DIR/.venv" ]]; then
+  ensure_cmd "$PYTHON_BIN" python3
+
+  # Some minimal images ship python3 without venv support package.
+  if ! "$PYTHON_BIN" -m venv --help >/dev/null 2>&1; then
+    apt_install python3-venv python3-pip
+  fi
+
+  if [[ ! -x "$APP_DIR/.venv/bin/python" || ! -x "$APP_DIR/.venv/bin/pip" ]]; then
+    if [[ -d "$APP_DIR/.venv" ]]; then
+      log "Detected broken virtualenv at ${APP_DIR}/.venv, recreating..."
+      rm -rf "$APP_DIR/.venv"
+    fi
     log "Creating virtualenv at ${APP_DIR}/.venv"
     "$PYTHON_BIN" -m venv "$APP_DIR/.venv"
   fi
 
+  if [[ ! -x "$APP_DIR/.venv/bin/pip" ]]; then
+    log "Bootstrapping pip inside virtualenv..."
+    "$APP_DIR/.venv/bin/python" -m ensurepip --upgrade || true
+  fi
+
+  [[ -x "$APP_DIR/.venv/bin/pip" ]] || fail "pip is missing in ${APP_DIR}/.venv. Install python3-venv/python3-pip and retry."
+
   log "Installing backend dependencies..."
-  PIP_DISABLE_PIP_VERSION_CHECK=1 "$APP_DIR/.venv/bin/pip" install --no-input -r "$APP_DIR/requirements.txt"
+  PIP_DISABLE_PIP_VERSION_CHECK=1 "$APP_DIR/.venv/bin/python" -m pip install --no-input -r "$APP_DIR/requirements.txt"
 }
 
 run_migrations() {
