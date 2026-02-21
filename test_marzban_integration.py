@@ -145,7 +145,7 @@ def print_integration_examples():
     print("\n1. 🔄 Сброс всего трафика (Marzban + внешний):")
     print("   POST /api/admin/usage/reset/admin1")
     print("   - Сбрасывает users_usage в Marzban")
-    print("   - Сбрасывает внешний трафик в Xpert Panel")
+    print("   - Сбрасывает внешний трафик в Xpert")
     
     print("\n2. 📊 Получение общего использования:")
     print("   GET /api/admin/usage/admin1")
@@ -251,7 +251,7 @@ def main():
     if integration_ok and reset_ok and combined_ok:
         print("\n🎉 All tests passed! Marzban integration ready!")
         print("\n📝 Next steps:")
-        print("1. 🔄 Перезапустите Xpert Panel")
+        print("1. 🔄 Перезапустите Xpert")
         print("2. 🖥️  Откройте Marzban UI")
         print("3. 🎯 Протестируйте кнопки 'Сбросить трафик' и 'Лимит трафика'")
         print("4. 📊 Проверьте что внешний трафик учитывается")

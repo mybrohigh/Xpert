@@ -2,7 +2,6 @@ import { createHashRouter, redirect } from "react-router-dom";
 import { fetch } from "../service/http";
 import { getAuthToken } from "../utils/authStorage";
 import { Dashboard } from "./Dashboard";
-import { XpertPanel } from "./XpertPanel";
 import { AdminManager } from "./AdminManager";
 import { Login } from "./Login";
 
@@ -43,12 +42,6 @@ export const router = createHashRouter([
         element: <Dashboard />,
         errorElement: <Login />,
         loader: fetchAdminLoader,
-    },
-    {
-        path: "/xpert/",
-        element: <XpertPanel />,
-        errorElement: <Login />,
-        loader: fetchSudoLoader,
     },
     {
         path: "/admin-manager/",

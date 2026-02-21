@@ -3,7 +3,7 @@
             "users_traffic": {
                 **global_stats,
                 "external_servers": True,  # Флаг что это внешние сервера
-                "integration_type": "xpert_panel",
+                "integration_type": "xpert",
                 "data_source": "traffic_monitoring_system"
             }
         }
@@ -17,7 +17,7 @@
                 "total_gb_used": 0,
                 "total_connections": 0,
                 "external_servers": False,
-                "integration_type": "xpert_panel_error",
+                "integration_type": "xpert_error",
                 "error": str(e)
             }
         }

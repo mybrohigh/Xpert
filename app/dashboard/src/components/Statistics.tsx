@@ -121,7 +121,7 @@ const StatisticCard: FC<PropsWithChildren<StatisticCardProps>> = ({
 }) => {
   return (
     <Card
-      p={{ base: 3, md: 6 }}
+      p={{ base: 3, md: 4 }}
       borderWidth="1px"
       borderColor="light-border"
       bg="#F9FAFB"
@@ -137,7 +137,7 @@ const StatisticCard: FC<PropsWithChildren<StatisticCardProps>> = ({
       boxShadow="none"
       borderRadius="12px"
       width="full"
-      minH={{ base: "102px", md: "120px" }}
+      minH={{ base: "96px", md: "86px" }}
       alignSelf="stretch"
       display="flex"
       justifyContent="space-between"
@@ -146,9 +146,9 @@ const StatisticCard: FC<PropsWithChildren<StatisticCardProps>> = ({
       position="relative"
       overflow="hidden"
     >
-      <HStack alignItems="center" columnGap={{ base: 3, md: 4 }} flex="1">
+      <HStack alignItems="center" columnGap={{ base: 3, md: 3 }} flex="1">
         <Box
-          p={{ base: "1.5", md: "2" }}
+          p={{ base: "1.5", md: "1.5" }}
           position="relative"
           color="#4d63ff"
           _before={{
@@ -189,16 +189,16 @@ const StatisticCard: FC<PropsWithChildren<StatisticCardProps>> = ({
           }}
           fontWeight="medium"
           textTransform="capitalize"
-          fontSize={{ base: "2xs", md: "sm" }}
+          fontSize={{ base: "2xs", md: "xs" }}
           textAlign="left"
         >
           {title}
         </Text>
       </HStack>
       <Box
-        fontSize={{ base: "sm", md: "3xl" }}
+        fontSize={{ base: "sm", md: "2xl" }}
         fontWeight="semibold"
-        mt={{ base: 0, md: 2 }}
+        mt={0}
         lineHeight="1.1"
         textAlign="right"
         w="auto"

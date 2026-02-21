@@ -12,7 +12,7 @@ DATA_DIR = os.environ.get("XPERT_DATA_DIR", "/var/lib/marzban/xpert")
 
 
 class XpertStorage:
-    """Файловое хранилище для Xpert Panel"""
+    """Файловое хранилище для Xpert"""
     
     def __init__(self):
         self.data_dir = DATA_DIR

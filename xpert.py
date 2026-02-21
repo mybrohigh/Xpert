@@ -25,7 +25,7 @@ from app.db import Session, crud, get_db
 import config
 from app import logger
 
-router = APIRouter(prefix="/xpert", tags=["Xpert Panel"])
+router = APIRouter(prefix="/xpert", tags=["Xpert"])
 
 
 class SourceCreate(BaseModel):
@@ -299,7 +299,7 @@ async def filter_servers_by_host(data: dict):
         raise HTTPException(status_code=500, detail=str(e))
 @router.get("/stats")
 async def get_stats():
-    """Получение статистики Xpert Panel"""
+    """Получение статистики Xpert"""
     return xpert_service.get_stats()
 
 
@@ -603,7 +603,7 @@ async def get_subscription(format: str = "universal", user_token: str = None):
         "Content-Type": "text/plain; charset=utf-8",
         "Profile-Update-Interval": "1",
         "Subscription-Userinfo": f"upload={traffic_stats.get('upload', 0)}; download={traffic_stats.get('download', 0)}; total={traffic_stats.get('total', 0)}; expire={traffic_stats.get('expire', 0)}",
-        "Profile-Title": "Xpert Panel",
+        "Profile-Title": "Xpert",
         "Traffic-Webhook": f"{config.XPERT_DOMAIN}/api/xpert/traffic-webhook",
         "User-Token": user_token or "anonymous"
     }
@@ -1089,7 +1089,7 @@ async def marzban_traffic_stats(days: int = 30):
                     "total_gb_used": 0,
                     "total_connections": 0,
                     "external_servers": False,
-                    "integration_type": "xpert_panel_disabled"
+                    "integration_type": "xpert_disabled"
                 }
             }
         
@@ -1101,7 +1101,7 @@ async def marzban_traffic_stats(days: int = 30):
             "users_traffic": {
                 **global_stats,
                 "external_servers": True,  # Флаг что это внешние сервера
-                "integration_type": "xpert_panel",
+                "integration_type": "xpert",
                 "data_source": "traffic_monitoring_system"
             }
         }
@@ -1115,7 +1115,7 @@ async def marzban_traffic_stats(days: int = 30):
                 "total_gb_used": 0,
                 "total_connections": 0,
                 "external_servers": False,
-                "integration_type": "xpert_panel_error",
+                "integration_type": "xpert_error",
                 "error": str(e)
             }
         }

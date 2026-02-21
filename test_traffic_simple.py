@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Простое тестирование системы мониторинга трафика Xpert Panel
+Простое тестирование системы мониторинга трафика Xpert
 """
 
 import sys
@@ -182,7 +182,7 @@ def print_integration_notes():
 
 def main():
     """Основная функция тестирования"""
-    print("🚀 Xpert Panel Traffic Monitoring System Test")
+    print("🚀 Xpert Traffic Monitoring System Test")
     print("=" * 50)
     
     # Тестирование сервиса
@@ -202,7 +202,7 @@ def main():
     
     print("\n🎯 System ready for production!")
     print("\n📝 Next steps:")
-    print("1. 🔄 Restart Xpert Panel to load new middleware")
+    print("1. 🔄 Restart Xpert to load new middleware")
     print("2. 🧪 Test subscription URLs with tracking")
     print("3. 📱 Implement client-side webhook calls")
     print("4. 🖥️ Add traffic stats to Marzban UI")

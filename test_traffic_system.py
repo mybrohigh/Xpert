@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Тестирование системы мониторинга трафика Xpert Panel
+Тестирование системы мониторинга трафика Xpert
 """
 
 import sys
@@ -208,7 +208,7 @@ def print_usage_examples():
 
 async def main():
     """Основная функция тестирования"""
-    print("🚀 Xpert Panel Traffic Monitoring System Test")
+    print("🚀 Xpert Traffic Monitoring System Test")
     print("=" * 50)
     
     # Тестирование сервиса
@@ -235,7 +235,7 @@ async def main():
     
     print("\n✅ Testing completed!")
     print("\n📝 Next steps:")
-    print("1. Start the Xpert Panel server")
+    print("1. Start the Xpert server")
     print("2. Test subscription URLs with tracking")
     print("3. Implement client-side webhook calls")
     print("4. Monitor traffic in Marzban UI")

@@ -215,7 +215,7 @@ class XpertService:
         direct_configs = direct_config_service.get_all_configs()
         direct_active = [c for c in direct_configs if c.is_active]
 
-        # Include direct configs in global totals shown by Xpert Panel Statistics.
+        # Include direct configs in global totals shown by Xpert Statistics.
         stats["total_direct_configs"] = len(direct_configs)
         stats["active_direct_configs"] = len(direct_active)
         stats["total_configs"] = stats.get("total_configs", 0) + len(direct_configs)

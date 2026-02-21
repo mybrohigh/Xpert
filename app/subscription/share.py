@@ -320,7 +320,7 @@ def generate_v2ray_links(proxies: dict, inbounds: dict, extra_data: dict, revers
         # Если пользователь неактивен, добавляем только заглушку или пусто
         pass
     
-    # Добавляем конфиги из Xpert Panel (с автоматической синхронизацией)
+    # Добавляем конфиги из Xpert (с автоматической синхронизацией)
     try:
         from app.xpert.service import xpert_service
         from app.xpert.cluster_service import whitelist_service
@@ -385,8 +385,8 @@ def generate_v2ray_links(proxies: dict, inbounds: dict, extra_data: dict, revers
                     conf.add_link(config_with_flags)
                     
     except Exception as e:
-        # Если Xpert Panel не настроен, просто игнорируем
-        logger.debug(f"Xpert Panel integration failed: {e}")
+        # Если Xpert не настроен, просто игнорируем
+        logger.debug(f"Xpert integration failed: {e}")
         pass
     
     return conf.render(reverse=reverse)
@@ -407,7 +407,7 @@ def generate_clash_subscription(
         inbounds, proxies, format_variables, conf=conf, reverse=reverse
     )
     
-    # Добавляем конфиги из Xpert Panel (только для v2ray формата, clash требует специальной конвертации)
+    # Добавляем конфиги из Xpert (только для v2ray формата, clash требует специальной конвертации)
     # Пока пропускаем для clash, так как нужна конвертация в yaml формат
     
     return marzban_config

@@ -1,4 +1,4 @@
-# ⚡ Xpert Panel
+# ⚡ Xpert
 
 **Modified Marzban Panel** - VPN управление с расширенным функционалом агрегации подписок.
 
@@ -9,16 +9,26 @@
 2. **Проверка пинга** - автоматическая проверка через целевые IP (93.171.220.198, 185.69.186.175)
 3. **Автообновление** - обновление подписок каждый час
 4. **Фильтрация** - только рабочие конфиги с пингом < 300ms
-5. **Ребрендинг** - название "Xpert Panel" вместо "Marzban"
+5. **Ребрендинг** - название "Xpert" вместо "Marzban"
 
 ## 🚀 Установка
+
+### Один скрипт (рекомендуется)
+
+```bash
+git clone https://github.com/mybrohigh/Xpert-VPS.git Xpert
+cd Xpert
+sudo bash scripts/install.sh install --service-name xpert --install-dir /opt/xpert
+```
+
+Подробно: `INSTALL_XPERT_RU.md`
 
 ### Через Docker (рекомендуется)
 
 ```bash
 # Клонирование
-git clone https://github.com/mybrohigh/Xpert-Panel.git
-cd Xpert-Panel
+git clone https://github.com/mybrohigh/Xpert.git
+cd Xpert
 
 # Настройка переменных окружения
 cp .env.example .env
@@ -95,7 +105,7 @@ DOMAIN=home.turkmendili.ru
 
 ## 🎨 Изменения дизайна
 
-- Название: **Xpert Panel**
+- Название: **Xpert**
 - Цветовая схема: сохранена оригинальная (можно изменить в `app/dashboard/src/index.scss`)
 - Логотип: можно заменить в `app/dashboard/public/`
 
@@ -116,4 +126,4 @@ uvicorn main:app --reload
 
 ---
 
-**Xpert Panel** v1.0.0 | Powered by Marzban + Custom Extensions
+**Xpert** v1.0.0 | Powered by Marzban + Custom Extensions

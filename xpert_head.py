@@ -15,7 +15,7 @@ from app.db import Session, crud, get_db
 import config
 from app import logger
 
-router = APIRouter(prefix="/xpert", tags=["Xpert Panel"])
+router = APIRouter(prefix="/xpert", tags=["Xpert"])
 
 
 class SourceCreate(BaseModel):

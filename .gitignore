@@ -163,6 +163,7 @@ xray-core
 
 # Xpert runtime data (do not commit)
 data/
+reports/
 
 # Local backup files
 *.bak.*

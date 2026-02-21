@@ -482,7 +482,7 @@ export const AdminManager = () => {
   };
 
   return (
-    <Box className="xpert-page-shift">
+    <Box className="xpert-page-shift" w="full" minW={0}>
       <Header />
       <Box p={{ base: 3, md: 5 }}>
         <Stack
@@ -707,20 +707,36 @@ export const AdminManager = () => {
           <ModalCloseButton />
           <ModalBody pb={4}>
             <VStack align="stretch" spacing={3} maxH="60vh" overflowY="auto">
-              {notifications.map((n) => (
-                <Box key={n.id} borderWidth="1px" borderRadius="md" p={3} bg={n.id > lastSeenNotificationId ? "yellow.50" : "transparent"}>
-                  <Text fontSize="xs" color="gray.500">
-                    {n.created_at?.replace("T", " ").slice(0, 19)}
-                  </Text>
-                  <Text fontSize="sm" fontWeight="semibold">
-                    {n.target_username}
-                  </Text>
-                  <Text fontSize="xs" color="gray.600">
-                    {t("adminManager.notifications.byAdmin", { admin: n.admin_username || "-" })}
-                  </Text>
-                  <Text fontSize="sm">{n.message}</Text>
-                </Box>
-              ))}
+              {notifications.map((n) => {
+                const isUnread = n.id > lastSeenNotificationId;
+                return (
+                  <Box
+                    key={n.id}
+                    borderWidth="1px"
+                    borderRadius="md"
+                    p={3}
+                    bg={isUnread ? "yellow.50" : "transparent"}
+                    borderColor={isUnread ? "yellow.200" : undefined}
+                    _dark={{
+                      bg: isUnread ? "rgba(245, 158, 11, 0.12)" : "rgba(148, 163, 184, 0.06)",
+                      borderColor: isUnread
+                        ? "rgba(251, 191, 36, 0.46)"
+                        : "rgba(148, 163, 184, 0.24)",
+                    }}
+                  >
+                    <Text fontSize="xs" color="gray.500" _dark={{ color: "gray.400" }}>
+                      {n.created_at?.replace("T", " ").slice(0, 19)}
+                    </Text>
+                    <Text fontSize="sm" fontWeight="semibold">
+                      {n.target_username}
+                    </Text>
+                    <Text fontSize="xs" color="gray.600" _dark={{ color: "gray.300" }}>
+                      {t("adminManager.notifications.byAdmin", { admin: n.admin_username || "-" })}
+                    </Text>
+                    <Text fontSize="sm">{n.message}</Text>
+                  </Box>
+                );
+              })}
               {!notifications.length ? (
                 <Text color="gray.500">{t("adminManager.notifications.empty")}</Text>
               ) : null}
