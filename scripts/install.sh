@@ -263,13 +263,64 @@ run_migrations() {
   )
 }
 
+node_major() {
+  if ! command -v node >/dev/null 2>&1; then
+    echo 0
+    return 0
+  fi
+  node -p "Number(process.versions.node.split('.')[0])" 2>/dev/null || echo 0
+}
+
+ensure_modern_node() {
+  local min_major=18
+  local major
+  major="$(node_major)"
+  if command -v npm >/dev/null 2>&1 && [[ "$major" =~ ^[0-9]+$ ]] && (( major >= min_major )); then
+    log "Using Node.js $(node -v) and npm $(npm -v)"
+    return 0
+  fi
+
+  if [[ "$SKIP_APT" -eq 1 ]]; then
+    fail "Node.js >=${min_major} and npm are required for dashboard build. Re-run without --skip-apt or install Node.js manually."
+  fi
+  if [[ "$EUID" -ne 0 ]]; then
+    fail "Root privileges are required to install Node.js"
+  fi
+
+  log "Installing Node.js 20.x (required for Vite build)..."
+  apt_install ca-certificates curl gnupg
+  install -d -m 0755 /etc/apt/keyrings
+  if [[ ! -f /etc/apt/keyrings/nodesource.gpg ]]; then
+    curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+      | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
+  fi
+
+  local codename
+  codename="$(. /etc/os-release && echo "${VERSION_CODENAME:-}")"
+  [[ -n "$codename" ]] || codename="nodistro"
+  cat >/etc/apt/sources.list.d/nodesource.list <<EOF
+deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x ${codename} main
+EOF
+
+  APT_UPDATED=0
+  apt_install nodejs
+  hash -r || true
+
+  major="$(node_major)"
+  if ! command -v npm >/dev/null 2>&1 || ! [[ "$major" =~ ^[0-9]+$ ]] || (( major < min_major )); then
+    fail "Failed to provision Node.js >=${min_major}. Current: node=$(node -v 2>/dev/null || echo none), npm=$(npm -v 2>/dev/null || echo none)"
+  fi
+
+  log "Using Node.js $(node -v) and npm $(npm -v)"
+}
+
 build_frontend() {
   if [[ "$SKIP_FRONTEND" -eq 1 ]]; then
     log "Skipping dashboard build (--skip-frontend)"
     return 0
   fi
 
-  ensure_cmd npm nodejs npm
+  ensure_modern_node
 
   local dashboard_dir="$APP_DIR/app/dashboard"
   [[ -d "$dashboard_dir" ]] || fail "Dashboard directory not found: $dashboard_dir"
